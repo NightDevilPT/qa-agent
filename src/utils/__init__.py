@@ -5,11 +5,14 @@ Provides sandbox execution, LLM integration, human-in-the-loop, and path utiliti
 
 from utils.hitl import ask_human
 from utils.llm import get_llm
+from utils.logger import console, get_logger
 from utils.sandbox import Sandbox, SandboxError, create_sandbox
 
 __all__ = [
     "ask_human",
     "get_llm",
+    "get_logger",
+    "console",
     "Sandbox",
     "SandboxError",
     "create_sandbox",

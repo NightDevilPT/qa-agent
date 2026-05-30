@@ -1,14 +1,33 @@
-"""
-JavaScript Language Configuration
-==================================
-"""
-
 import json
 
 JAVASCRIPT_CONFIG = {
     "name": "JavaScript",
     "image": "node:20-alpine",
     "extensions": [".js", ".jsx"],
+    # pathspec / .gitignore-style patterns — used by extract_files
+    "exclude_patterns": [
+        ".git/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        "coverage/",
+        ".next/",
+        ".nuxt/",
+        "out/",
+        "__tests__/",
+        "**/*.test.js",
+        "**/*.test.jsx",
+        "**/*.spec.js",
+        "**/*.spec.jsx",
+        "**/*.min.js",
+        "**/*.bundle.js",
+        "**/jest.config.js",
+        "**/jest.setup.js",
+        "**/babel.config.js",
+        "**/webpack.config.js",
+        "**/rollup.config.js",
+        "**/vite.config.js",
+    ],
     "install_cmd": "npm install",
     "test_cmd": "npx jest --json 2>&1",
     "test_file_pattern": "{name}.test.js",
@@ -34,17 +53,14 @@ JAVASCRIPT_CONFIG = {
             "name": "qa-test",
             "version": "1.0.0",
             "private": True,
-            "type": "module",
             "scripts": {"test": "jest"},
-            "devDependencies": {"jest": "^29.0.0"},
+            "devDependencies": {"jest": "^29.7.0"},
         }, indent=2),
         "jest.config.js": (
-            "export default {\n"
+            "module.exports = {\n"
             "  testEnvironment: 'node',\n"
-            "  transform: {},\n"
             "  testMatch: ['**/*.test.js', '**/*.spec.js'],\n"
             "  moduleFileExtensions: ['js', 'jsx', 'json', 'node'],\n"
-            "  injectGlobals: false,\n"
             "};\n"
         ),
     },
