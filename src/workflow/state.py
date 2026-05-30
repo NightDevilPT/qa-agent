@@ -14,11 +14,9 @@ nothing unless you dump them into a prompt.
 """
 
 from typing import Dict, List, Literal, Optional, TypedDict
-
 from pydantic import BaseModel, Field
 
 # --- Type aliases ---
-
 InputType = Literal["file", "folder", "repo"]
 ProjectLanguage = Literal["javascript", "typescript"]
 FileStatusKey = Literal["pending", "in_progress", "completed", "failed", "skipped"]
@@ -26,10 +24,8 @@ FileStatusKey = Literal["pending", "in_progress", "completed", "failed", "skippe
 # importer_path -> list of dependency paths it imports (project-relative)
 DependencyGraph = Dict[str, List[str]]
 
-
 class FileStatus(TypedDict):
     """Immutable ledger entry for one source file (set when work finishes)."""
-
     status: FileStatusKey
     passed: bool
     retries_used: int
@@ -37,23 +33,8 @@ class FileStatus(TypedDict):
     error_log: Optional[str]
     tokens_used: int  # Tokens consumed generating and fixing tests for this specific file
 
-
 class QAState(TypedDict, total=False):
-    """
-    Global LangGraph state. Nodes return only the keys they update.
-
-    Lifecycle (high level)
-    ----------------------
-    1. CLI sets input, ``project_language``, and ``max_retries``.
-    2. ``init_docker`` sets ``workspace_root``, ``sandbox_ready``, ``container_id``.
-    3. ``extract_files`` sets ``discovered_files`` and ``unplanned_files``.
-    4. ``plan_strategy`` sets ``excluded_files``, ``dependency_graph``, ``todo_list``.
-    5. ``build_todo_list`` hierarchically sorts ``todo_list``.
-    6. Worker loop (``select_next`` → ``generate_test`` → ``run_test``):
-       updates ``current_*``, ``generated_test_code``, ``test_*``, ``retries``,
-       then merges ``file_statuses`` and advances ``todo_list``.
-    7. Teardown clears sandbox fields; optional ``final_report`` at end.
-    """
+    """Global LangGraph state. Nodes return only the keys they update."""
 
     # --- Input (set once at graph start) ---
     target_path: str
@@ -80,6 +61,11 @@ class QAState(TypedDict, total=False):
     current_file: Optional[str]
     current_source_code: Optional[str]  # High token cost if included in prompts
     current_language: Optional[str]  # "javascript" | "typescript"
+    
+    # === CRITICAL FIX ===
+    # This was missing! LangGraph was stripping it out of the state dictionary.
+    test_file_path: Optional[str]
+    # ====================
 
     # --- Per-file iteration (reset when ``select_next`` picks a new file) ---
     generated_test_code: Optional[str]  # High token cost on retry/fix prompts
@@ -96,12 +82,7 @@ class QAState(TypedDict, total=False):
 # --- Structured LLM output for plan_strategy (rulebook §6.1) ---
 
 class PlanStrategyOutput(BaseModel):
-    """
-    Parsed planning response. Maps directly into ``QAState`` keys.
-
-    Keep prompts compact: pass file paths + short summaries, not full file bodies.
-    """
-
+    """Parsed planning response. Maps directly into ``QAState`` keys."""
     test_candidates: List[str] = Field(
         description="Project-relative paths worth testing, in any order.",
     )

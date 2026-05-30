@@ -6,6 +6,10 @@ from workflow.nodes.clone_repo import clone_repo
 from workflow.nodes.extract_files import extract_files
 from workflow.nodes.plan_strategy import plan_strategy
 from workflow.nodes.build_todo_list import build_todo_list
+from workflow.nodes.init_docker import init_docker
+from workflow.nodes.generate_test import generate_test
+from workflow.nodes.run_test import run_test
+from workflow.nodes.finalize_file import finalize_file
 
 # --- Future Nodes (Uncomment as we build them) ---
 # from workflow.nodes.init_docker import init_docker
@@ -21,11 +25,13 @@ __all__ = [
     "clone_repo",
     "plan_strategy",
     "build_todo_list",
+    "init_docker",
+    "generate_test",
+    "run_test",
+    "finalize_file",
 
     # --- Future Nodes ---
     # "select_next",
-    # "generate_test",
-    # "run_test",
     # "record_result",
     # "final_report",
     # "teardown",
