@@ -21,6 +21,9 @@ from typing import Literal
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Docker LLM Configuration
 DOCKER_LLM_BASE_URL = os.getenv("DOCKER_LLM_BASE_URL", "http://localhost:12434/v1")
 DOCKER_LLM_MODEL = os.getenv("DOCKER_LLM_MODEL", "ai/qwen2.5")
@@ -28,14 +31,15 @@ DOCKER_LLM_API_KEY = os.getenv("DOCKER_LLM_API_KEY", "not-needed")
 
 # Google Gemini Configuration
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY"))
 
 # Default provider
-DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "docker")
+api_key_set = bool(GEMINI_API_KEY)
+DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 
 
 def get_llm(
-    provider: Literal["docker", "gemini"] = None,
+    provider: Literal["docker", "gemini"] = "gemini",
     context: int = 4,
     temperature: float = 0.1
 ):

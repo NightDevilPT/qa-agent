@@ -1,4 +1,3 @@
-# src/workflow/state.py
 """
 LangGraph state definitions for the QA Agent.
 
@@ -36,6 +35,7 @@ class FileStatus(TypedDict):
     retries_used: int
     test_file_path: Optional[str]
     error_log: Optional[str]
+    tokens_used: int  # Tokens consumed generating and fixing tests for this specific file
 
 
 class QAState(TypedDict, total=False):
@@ -46,12 +46,13 @@ class QAState(TypedDict, total=False):
     ----------------------
     1. CLI sets input, ``project_language``, and ``max_retries``.
     2. ``init_docker`` sets ``workspace_root``, ``sandbox_ready``, ``container_id``.
-    3. ``extract_files`` sets ``discovered_files``.
+    3. ``extract_files`` sets ``discovered_files`` and ``unplanned_files``.
     4. ``plan_strategy`` sets ``excluded_files``, ``dependency_graph``, ``todo_list``.
-    5. Worker loop (``select_next`` → ``generate_test`` → ``run_test``):
+    5. ``build_todo_list`` hierarchically sorts ``todo_list``.
+    6. Worker loop (``select_next`` → ``generate_test`` → ``run_test``):
        updates ``current_*``, ``generated_test_code``, ``test_*``, ``retries``,
        then merges ``file_statuses`` and advances ``todo_list``.
-    6. Teardown clears sandbox fields; optional ``final_report`` at end.
+    7. Teardown clears sandbox fields; optional ``final_report`` at end.
     """
 
     # --- Input (set once at graph start) ---
@@ -62,6 +63,7 @@ class QAState(TypedDict, total=False):
 
     # --- Planning queue (rulebook §3: todo_list drives order) ---
     discovered_files: List[str]  # All valid sources after extract (before LLM filter)
+    unplanned_files: List[str]   # Temporary queue for the LLM planning loop
     excluded_files: Dict[str, str]  # path -> reason (types-only, config, etc.)
     dependency_graph: DependencyGraph
     todo_list: List[str]  # Priority-ordered paths to test; shrinks as work completes
@@ -87,10 +89,11 @@ class QAState(TypedDict, total=False):
 
     # --- Run completion ---
     final_report: Optional[str]
+    total_tokens: int  # Running total of all tokens consumed
+    node_tokens: Dict[str, int]  # Tracks tokens used per LangGraph node (e.g., {"plan_strategy": 1500})
 
 
 # --- Structured LLM output for plan_strategy (rulebook §6.1) ---
-
 
 class PlanStrategyOutput(BaseModel):
     """

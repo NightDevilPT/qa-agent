@@ -97,7 +97,7 @@ def ask_human(
     
     console.print()
     console.print(Panel.fit(
-        f"[bold {color}]⏸  {title}[/bold {color}]",
+        f"[bold {color}]||  {title}[/bold {color}]",
         border_style=color
     ))
     
@@ -106,7 +106,7 @@ def ask_human(
         console.print()
     
     for key, desc in options.items():
-        prefix = "→" if key == default else " "
+        prefix = "->" if key == default else "  "
         console.print(
             f"  {prefix} [bold green]{key}[/bold green] - [white]{desc}[/white]"
         )
@@ -121,6 +121,6 @@ def ask_human(
         show_choices=False
     )
     
-    console.print(f"[dim]✓ Selected: {options[choice]}[/dim]")
+    console.print(f"[dim]Selected: {options[choice]}[/dim]")
     
     return choice

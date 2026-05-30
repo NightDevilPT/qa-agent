@@ -1,4 +1,3 @@
-# src/tools/sandbox.py
 """
 Docker sandbox utility for isolated test execution.
 Handles container lifecycle, workspace setup, and test execution.
@@ -13,11 +12,9 @@ import docker
 from docker.errors import DockerException, ImageNotFound, ContainerError
 from docker.models.containers import Container
 
-
 class SandboxError(Exception):
     """Custom exception for sandbox-related errors."""
     pass
-
 
 class Sandbox:
     """
@@ -55,10 +52,18 @@ class Sandbox:
         input_type: str,
         language_config: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Create temporary workspace with proper structure."""
+        """Create temporary workspace with proper structure inside the local .temp folder."""
         workspace_structure = language_config["workspace_structure"][input_type]
         
-        temp_dir = Path(tempfile.mkdtemp(prefix="qa_agent_"))
+        # 1. Find the local .temp folder relative to this file
+        # (Assuming this is in src/tools/, we go up three levels to the root)
+        project_root = Path(__file__).resolve().parent.parent.parent
+        temp_base = project_root / ".temp"
+        temp_base.mkdir(exist_ok=True)
+        
+        # 2. Tell mkdtemp to explicitly create the folder inside our local .temp
+        temp_dir = Path(tempfile.mkdtemp(prefix="qa_agent_workspace_", dir=str(temp_base)))
+
         workspace_dir = temp_dir / "workspace"
         workspace_dir.mkdir(parents=True, exist_ok=True)
         
