@@ -1,66 +1,46 @@
-from typing import Dict, List, Any
-from constants.languages.javascript import JAVASCRIPT_CONFIG
-from constants.languages.typescript import TYPESCRIPT_CONFIG
+"""
+Central Registry for Language Configurations.
+All nodes should import `get_language_config` from this file.
+"""
 
-DEFAULT_LANGUAGE = "typescript"
+from typing import Dict, Any
+from .javascript import JAVASCRIPT_CONFIG
+from .typescript import TYPESCRIPT_CONFIG
 
-SUPPORTED_LANGUAGES: List[str] = ["typescript", "javascript"]
-
-LANGUAGE_CONFIG: Dict[str, Dict[str, Any]] = {
-    "typescript": TYPESCRIPT_CONFIG,
+# ==========================================
+# THE REGISTRY
+# Add new languages to this dictionary
+# ==========================================
+LANGUAGE_REGISTRY: Dict[str, Dict[str, Any]] = {
     "javascript": JAVASCRIPT_CONFIG,
+    "typescript": TYPESCRIPT_CONFIG,
 }
 
 def get_language_config(language: str) -> Dict[str, Any]:
-    """Get configuration for a selected language."""
-    if language not in LANGUAGE_CONFIG:
-        raise ValueError(f"Unsupported language: {language}. Supported: {SUPPORTED_LANGUAGES}")
-    return LANGUAGE_CONFIG[language]
-
-
-def normalize_project_language(value: str) -> str:
-    """Map user input (js, ts, javascript, ...) to registry key."""
-    key = value.strip().lower()
+    """
+    Retrieve the configuration profile for a specific language.
+    Handles aliases (e.g., 'js' -> 'javascript').
+    """
+    normalized_lang = language.strip().lower()
+    
+    # Map common abbreviations to the official registry key
     aliases = {
         "js": "javascript",
-        "jsx": "javascript",
-        "javascript": "javascript",
-        "ts": "typescript",
-        "tsx": "typescript",
-        "typescript": "typescript",
+        "ts": "typescript"
     }
-    if key not in aliases:
-        raise ValueError(
-            f"Unsupported project language: {value!r}. "
-            f"Use one of: javascript, typescript (or js, ts)."
-        )
-    return aliases[key]
-
-
-def get_all_exclude_patterns() -> List[str]:
-    """Merged exclude patterns from all language configs (deduplicated)."""
-    patterns: List[str] = []
-    seen: set[str] = set()
-    for config in LANGUAGE_CONFIG.values():
-        for pattern in config.get("exclude_patterns", []):
-            if pattern not in seen:
-                seen.add(pattern)
-                patterns.append(pattern)
-    return patterns
-
-
-def get_extensions_for_language(language: str) -> tuple[str, ...]:
-    """File extensions for the selected project language only."""
-    config = get_language_config(normalize_project_language(language))
-    return tuple(config.get("extensions", []))
-
-
-def detect_language(file_path: str) -> str:
-    """Detect language from file extension."""
-    from pathlib import Path
     
-    ext = Path(file_path).suffix.lower()
-    for lang, config in LANGUAGE_CONFIG.items():
-        if ext in config.get("extensions", []):
-            return lang
-    raise ValueError(f"Unsupported file extension: {ext}")
+    # Resolve alias if it exists, otherwise use the input
+    resolved_lang = aliases.get(normalized_lang, normalized_lang)
+
+    if resolved_lang not in LANGUAGE_REGISTRY:
+        supported = ", ".join(LANGUAGE_REGISTRY.keys())
+        raise ValueError(
+            f"Unsupported language: '{language}'. "
+            f"Supported languages are: {supported}"
+        )
+        
+    return LANGUAGE_REGISTRY[resolved_lang]
+
+def get_supported_languages() -> list[str]:
+    """Returns a list of all currently supported languages."""
+    return list(LANGUAGE_REGISTRY.keys())

@@ -33,21 +33,48 @@ class FileStatus(TypedDict):
     error_log: Optional[str]
     tokens_used: int  # Tokens consumed generating and fixing tests for this specific file
 
+class CurrentFileStatus(TypedDict):
+    """Tracks the active file being processed in the worker loop."""
+    current_file: Optional[str]
+    current_source_code: Optional[str]
+    test_passed: bool
+    test_output: Optional[str]
+    retries: int
+    is_error: bool
+    error_log: Optional[str]
+
+# --- Project Analysis & Configuration Types ---
+class TestLibConfig(TypedDict, total=False):
+    """Holds the execution and setup rules for the chosen test framework."""
+    name: str                           # Detected framework name (e.g., "jest", "vitest")
+    install_packages: Dict[str, str]    # Packages to install if missing (e.g., {"jest": "^29.0"})
+    config_files: Dict[str, str]        # Required config files to write (e.g., jest.config.js content)
+    per_file_test_cmd: str              # Command to run a single test (e.g., "npx jest {test_path} --json")
+
+class ProjectAnalysis(TypedDict, total=False):
+    """Deep analysis of the workspace environment extracted from package.json and project files."""
+    has_package_json: bool              # True for folders/repos with package.json; False for single files
+    test_lib: str                       # The detected or default framework name
+    test_lib_config: TestLibConfig      # The actual configuration mapping (packages, commands)
+    project_dependencies: Dict[str, str]# All external dependencies parsed from package.json
+    module_system: Literal["esm", "commonjs", "mixed"] # Determines import vs require syntax
+
 class QAState(TypedDict, total=False):
     """Global LangGraph state. Nodes return only the keys they update."""
 
     # --- Input (set once at graph start) ---
-    target_path: str
+    target_path: Optional[str] # Used if input_type is "file" or "folder"
+    repo_url: Optional[str]    # Used if input_type is "repo"
     input_type: InputType
     project_language: ProjectLanguage  # User-selected: javascript or typescript
     max_retries: int
 
-    # --- Planning queue (rulebook §3: todo_list drives order) ---
-    discovered_files: List[str]  # All valid sources after extract (before LLM filter)
-    unplanned_files: List[str]   # Temporary queue for the LLM planning loop
-    excluded_files: Dict[str, str]  # path -> reason (types-only, config, etc.)
-    dependency_graph: DependencyGraph
-    todo_list: List[str]  # Priority-ordered paths to test; shrinks as work completes
+    # --- Project Analysis & Configuration ---
+    project_analysis: ProjectAnalysis    # Populated after checking package.json or applying defaults
+
+    # --- Dependencies & Execution Queue ---
+    dependency_graph: DependencyGraph    # Internal file import tree to determine test order
+    todo_list: List[str]                 # The priority queue of files to process
 
     # --- Ledger (completed / failed / skipped) ---
     file_statuses: Dict[str, FileStatus]
@@ -57,43 +84,10 @@ class QAState(TypedDict, total=False):
     sandbox_ready: bool
     container_id: Optional[str]
 
-    # --- Active file worker context ---
-    current_file: Optional[str]
-    current_source_code: Optional[str]  # High token cost if included in prompts
-    current_language: Optional[str]  # "javascript" | "typescript"
+    # --- Active Worker State ---
+    current_status: CurrentFileStatus
     
-    # === CRITICAL FIX ===
-    # This was missing! LangGraph was stripping it out of the state dictionary.
-    test_file_path: Optional[str]
-    # ====================
-
-    # --- Per-file iteration (reset when ``select_next`` picks a new file) ---
-    generated_test_code: Optional[str]  # High token cost on retry/fix prompts
-    test_passed: bool
-    test_output: Optional[str]  # Sandbox stdout/stderr; trim before fix prompts
-    retries: int
-
     # --- Run completion ---
     final_report: Optional[str]
     total_tokens: int  # Running total of all tokens consumed
     node_tokens: Dict[str, int]  # Tracks tokens used per LangGraph node (e.g., {"plan_strategy": 1500})
-
-
-# --- Structured LLM output for plan_strategy (rulebook §6.1) ---
-
-class PlanStrategyOutput(BaseModel):
-    """Parsed planning response. Maps directly into ``QAState`` keys."""
-    test_candidates: List[str] = Field(
-        description="Project-relative paths worth testing, in any order.",
-    )
-    excluded_files: Dict[str, str] = Field(
-        default_factory=dict,
-        description="path -> short reason (e.g. 'types only', 'barrel re-export').",
-    )
-    dependency_graph: DependencyGraph = Field(
-        default_factory=dict,
-        description="Each candidate path maps to paths it imports from this repo.",
-    )
-    todo_list: List[str] = Field(
-        description="Same as test_candidates but dependency-sorted (leaves first).",
-    )

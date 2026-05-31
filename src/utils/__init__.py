@@ -15,5 +15,5 @@ __all__ = [
     "console",
     "Sandbox",
     "SandboxError",
-    "create_sandbox",
+    "create_sandbox"
 ]

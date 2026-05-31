@@ -93,55 +93,68 @@ The diagram below shows **one long-lived Docker sandbox**. After initialization,
 
 ```mermaid
 graph TD
-    A[Start] --> B[Init Docker Sandbox]
-    B --> C[Mount workspace volume]
-    C --> D[npm install once]
-    D --> E[Persist container - keep alive for full run]
+    A[Start] --> F[CLI Input: path, type, language]
 
-    E --> F[CLI: path + JS or TS language]
+    %% --- 1. EXTRACTION PHASE ---
     F --> G{Work type?}
     G -->|File| H[Single file]
     G -->|Folder| I[Folder tree]
     G -->|Repo| J[Clone repository]
 
-    H --> K[Extract files with paths]
+    H --> K[Extract files & move to .temp]
     I --> K
     J --> K
 
-    K --> L[LLM: filter test candidates]
+    %% --- 2. ANALYSIS PHASE ---
+    K --> K1[Analyze project files & package.json]
+    K1 --> K2[Determine required test library <br> e.g., Jest, Vitest, Mocha]
+    K2 --> K3[Update State: active test_lib]
+
+    %% --- 3. PLANNING PHASE ---
+    K3 --> L[LLM: Plan strategy & filter candidates]
     L --> M[Build dependency graph]
     M --> N[Create priority todo list]
 
-    N --> O[Test generation loop]
+    %% --- 4. ENVIRONMENT SETUP ---
+    N --> B[Init Docker Sandbox]
+    B --> C[Mount workspace volume]
+    C --> D[Install dependencies & test_lib]
+    D --> E[Persist container background process]
 
-    O --> P[Next file from todo]
-    P --> Q[LLM generate Jest test]
+    %% --- 5. WORKER LOOP ---
+    E --> O[Test generation loop]
 
-    Q --> R[Append test + sources to mounted workspace]
-    R --> S[Run Jest in persisted container]
-    S --> T{Tests pass?}
+    O --> P[Pop next file from todo_list]
+    P --> Q[LLM generates test <br> using State.test_lib]
 
-    T -->|No| U[Capture stderr]
-    U --> V[LLM fix test with error context]
+    Q --> R[Save test to mounted workspace]
+    R --> S[Execute test in persisted container]
+    S --> T{Did test pass?}
+
+    %% --- SELF-HEALING ---
+    T -->|No| U[Capture terminal stderr]
+    U --> V[LLM self-heals test code]
     V --> R
 
-    T -->|Yes| W[Mark file complete]
-    W --> X{More files in todo?}
-    X -->|Yes| O
-    X -->|No| Y[Final report]
+    T -->|Yes| W[Mark file complete / Update Ledger]
+    W --> X{todo_list empty?}
 
-    Y --> Z[Teardown: stop and remove container]
+    X -->|No| O
+    X -->|Yes| Y[Generate Final Report]
+
+    %% --- 6. TEARDOWN ---
+    Y --> Z[Teardown: Stop & remove container]
     Z --> END_NODE[End]
 
     subgraph PERSISTENT_SANDBOX["Persistent Docker sandbox (single container)"]
         direction TB
         PS1[Container stays running]
         PS2[Workspace volume accumulates files]
-        PS3[Each iteration: append tests, run Jest - no reinstall]
+        PS3[Each iteration: append tests, run test - no reinstall]
         PS1 --> PS2 --> PS3
     end
 
-    E -.->|entire run uses| PERSISTENT_SANDBOX
+    E -.->|entire loop uses| PERSISTENT_SANDBOX
     R -.-> PS2
     S -.-> PS3
 ```
