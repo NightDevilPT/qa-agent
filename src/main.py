@@ -80,21 +80,10 @@ def main():
         if workspace_root:
             workspace_path = Path(workspace_root)
             
-            # Extract key statistics from the final state
-            run_stats = {
-                "discovered_files_count": len(final_state.get("discovered_files", [])),
-                "discovered_files": final_state.get("discovered_files", []),
-                "project_analysis": final_state.get("project_analysis", {}),
-                "total_tokens": final_state.get("total_tokens", 0),
-                "node_tokens": final_state.get("node_tokens", {}),
-                "file_statuses": final_state.get("file_statuses", {}),
-                "meta": final_state
-            }
-            
             # Write to qa_agent_stats.json in the workspace root
             stats_file = workspace_path / "qa_agent_stats.json"
             with open(stats_file, "w", encoding="utf-8") as f:
-                json.dump(run_stats, f, indent=2)
+                json.dump(final_state, f, indent=2)
                 
             log.info(f"Saved run statistics to: {stats_file}")
             

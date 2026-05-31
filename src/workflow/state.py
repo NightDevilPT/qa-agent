@@ -75,6 +75,7 @@ class QAState(TypedDict, total=False):
     # --- Dependencies & Execution Queue ---
     dependency_graph: DependencyGraph    # Internal file import tree to determine test order
     todo_list: List[str]                 # The priority queue of files to process
+    file_to_be_process: List[str]        # Source files to test
 
     # --- Ledger (completed / failed / skipped) ---
     file_statuses: Dict[str, FileStatus]
