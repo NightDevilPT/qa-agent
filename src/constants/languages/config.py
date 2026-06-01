@@ -9,7 +9,7 @@ from .typescript import TYPESCRIPT_CONFIG
 
 # ==========================================
 # THE REGISTRY
-# Add new languages to this dictionary
+# Strictly limited to JavaScript and TypeScript
 # ==========================================
 LANGUAGE_REGISTRY: Dict[str, Dict[str, Any]] = {
     "javascript": JAVASCRIPT_CONFIG,
@@ -20,7 +20,11 @@ def get_language_config(language: str) -> Dict[str, Any]:
     """
     Retrieve the configuration profile for a specific language.
     Handles aliases (e.g., 'js' -> 'javascript').
+    Raises a ValueError if the language is not supported.
     """
+    if not language:
+        raise ValueError("Language parameter cannot be empty. Must be 'javascript' or 'typescript'.")
+
     normalized_lang = language.strip().lower()
     
     # Map common abbreviations to the official registry key
@@ -36,7 +40,7 @@ def get_language_config(language: str) -> Dict[str, Any]:
         supported = ", ".join(LANGUAGE_REGISTRY.keys())
         raise ValueError(
             f"Unsupported language: '{language}'. "
-            f"Supported languages are: {supported}"
+            f"Currently, this agent strictly supports: {supported}"
         )
         
     return LANGUAGE_REGISTRY[resolved_lang]

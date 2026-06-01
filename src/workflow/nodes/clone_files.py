@@ -85,7 +85,7 @@ def _handle_file(target_path: str, workspace_base: Path) -> Optional[str]:
 def _handle_folder(target_path: str, workspace_base: Path) -> Optional[str]:
     """
     Validate and copy entire folder into workspace/.
-    Preserves directory structure.
+    Preserves directory structure and safely merges with required folders.
     Returns the workspace path, or None on failure.
     """
     source = Path(target_path).resolve()
@@ -94,26 +94,29 @@ def _handle_folder(target_path: str, workspace_base: Path) -> Optional[str]:
         log.error("Invalid folder path: %s", target_path)
         return None
     
-    # Create workspace directories
     workspace_path = workspace_base / "workspace"
-    src_dir = workspace_path / "src"
-    tests_dir = workspace_path / "tests"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    tests_dir.mkdir(parents=True, exist_ok=True)
     
-    # Copy entire folder contents into workspace/
-    for item in source.iterdir():
-        destination = workspace_path / item.name
-        if item.is_file():
-            shutil.copy2(item, destination)
-        elif item.is_dir():
-            # Skip if it would overwrite src/ or tests/
-            if item.name in ("src", "tests"):
-                continue
-            shutil.copytree(item, destination, dirs_exist_ok=True)
-    
-    log.info("Copied folder: %s → %s", source.name, workspace_path)
-    return str(workspace_path)
+    try:
+        # Use copytree to copy everything at once.
+        # Ignore massive/unnecessary folders to prevent crashes and save time.
+        shutil.copytree(
+            source, 
+            workspace_path, 
+            ignore=shutil.ignore_patterns("node_modules", ".git", ".next", "dist", "build"),
+            dirs_exist_ok=True
+        )
+        
+        # Ensure our required directories exist in the workspace, 
+        # even if they weren't in the source folder.
+        (workspace_path / "src").mkdir(parents=True, exist_ok=True)
+        (workspace_path / "tests").mkdir(parents=True, exist_ok=True)
+        
+        log.info("Copied folder: %s → %s", source.name, workspace_path)
+        return str(workspace_path)
+        
+    except Exception as e:
+        log.error("Failed to copy folder %s: %s", target_path, e)
+        return None
 
 
 def _handle_repo(repo_url: str, workspace_base: Path) -> Optional[str]:

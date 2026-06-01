@@ -3,6 +3,8 @@
 JAVASCRIPT_CONFIG = {
     "name": "javascript",
     "extensions": [".js", ".jsx", ".cjs", ".mjs"],
+    # Added for Phase 3 (Plan Strategy) to filter out existing tests/configs
+    "test_patterns": [".test.js", ".spec.js", ".test.jsx", ".spec.jsx", "config.js"],
     "exclude_patterns": [
         ".git/", "node_modules/", "dist/", "build/", "coverage/", 
         ".next/", "out/", "__tests__/", "**/*.test.*", "**/*.spec.*",
