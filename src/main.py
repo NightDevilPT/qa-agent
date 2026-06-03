@@ -75,17 +75,24 @@ def main():
         log.section("Graph Execution")
         final_state = app.invoke(initial_state)
         
-        # 3. Save Stats JSON into Workspace Root
-        workspace_root = final_state.get("workspace_root")
-        if workspace_root:
-            workspace_path = Path(workspace_root)
+        # 3. Save Stats JSON into the ORIGINAL Target Directory (NOT the temp workspace)
+        # Fallback to current working directory (".") if target_path is missing (e.g., repo clone)
+        target_dir = final_state.get("target_path") or "."
+        stats_file = Path(target_dir) / "qa_agent_stats.json"
+
+        try:
+            # Filter out heavy/unnecessary keys to keep the JSON readable
+            dump_data = {
+                k: v for k, v in final_state.items() 
+                if k not in ["current_status", "project_analysis", "workspace_root"]
+            }
             
-            # Write to qa_agent_stats.json in the workspace root
-            stats_file = workspace_path / "qa_agent_stats.json"
             with open(stats_file, "w", encoding="utf-8") as f:
-                json.dump(final_state, f, indent=2)
+                json.dump(dump_data, f, indent=2)
                 
             log.info(f"Saved run statistics to: {stats_file}")
+        except Exception as e:
+            log.error(f"Could not save statistics file: {e}")
             
         log.end("Run completed successfully.")
 
