@@ -12,10 +12,19 @@ Terminal output for the QA Agent — one shared Rich ``Console`` for the whole a
     console.print(Panel.fit("QA Agent"))
 """
 
+import sys
 from datetime import datetime
 
 from rich.console import Console
 from rich.text import Text
+
+# Reconfigure standard output streams to UTF-8 to prevent UnicodeEncodeError on Windows terminals
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, 'reconfigure'):
+        try:
+            stream.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
 
 console = Console(width=160, soft_wrap=False)
 
@@ -66,6 +75,9 @@ class Logger:
 
     def warn(self, msg: str, *args) -> None:
         self._log_line("WARN", self._fmt(msg, *args))
+
+    def warning(self, msg: str, *args) -> None:
+        self.warn(msg, *args)
 
     def error(self, msg: str, *args) -> None:
         self._log_line("ERROR", self._fmt(msg, *args))

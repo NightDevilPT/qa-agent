@@ -2,49 +2,58 @@
 
 The **QA Agent** is an AI-driven testing pipeline that autonomously generates, executes, and self-heals unit tests for JavaScript and TypeScript projects.
 
-It runs as a **LangGraph state machine**: discover files, plan test order, generate Jest tests with an LLM, and execute them inside a **single persistent Docker sandbox** for the whole run.
+Built as a **LangGraph state machine**, the agent systematically ingests a codebase, determines the optimal testing strategy, writes tests using an LLM, and safely executes them inside a **single persistent Docker sandbox**. If a test fails, the agent feeds the error logs back to the LLM to self-heal the code until it passes.
 
-### Core design ideas
+### Core Design Principles
 
-| Idea | What it means |
-|------|----------------|
-| **Persistent Docker sandbox** | One container is created at the start, kept alive until teardown. `npm install` runs **once**, not per file. |
-| **Append, do not recreate** | Each new test (and supporting sources) is **written into the mounted workspace** inside that container. Jest runs **in the same container** so earlier tests and modules remain available. |
-| **Dependency-aware planning** | The LLM builds a todo list so foundational files are tested before files that import them. |
-| **Self-healing** | On failure, stderr is sent back to the LLM to fix the test; retries continue until pass or `max_retries`. |
-
----
-
-### Workflow architecture (four phases)
-
-#### Phase 1: Environment initialization
-
-- Start **one** Docker container and mount a QA workspace (`src/`, `tests/`, `package.json`, Jest config).
-- Run **`npm install` once** in that container.
-- Keep the container **running** for the entire workflow (no new container per test file).
-
-#### Phase 2: Ingestion and extraction
-
-- CLI collects target path (file, folder, or repo) and project language (**JavaScript** or **TypeScript**).
-- **Extract** traverses the tree, applies exclude rules, and fills `discovered_files` in state.
-
-#### Phase 3: Intelligent planning
-
-- LLM filters non-testable files (types-only, config, and similar).
-- Builds a **dependency graph** and a priority **todo list**.
-
-#### Phase 4: Execution and self-healing (inside the same container)
-
-- **Generate** a Jest test for the next file in the todo list.
-- **Append** the test file (and any needed artifacts) to the **existing** workspace volume; do not spin up a new sandbox.
-- **Run** `jest` in the **persisted** container.
-- On failure: capture terminal output, retry with the LLM until pass or limit.
-- On success: record result, continue to the next file.
-- **Teardown:** stop and remove the container when the run finishes.
+| Principle | Description |
+| --- | --- |
+| **Persistent Docker Sandbox** | A single container is provisioned at the start and kept alive until teardown. Heavy operations like `npm install` run **once**, saving massive amounts of time. |
+| **Append, Do Not Recreate** | Newly generated test files (and required source code) are continuously **written into the mounted workspace** inside the active container. |
+| **Dependency-Aware Planning** | The LLM maps out internal dependencies and performs a topological sort, ensuring foundational files are tested before the complex files that rely on them. |
+| **Iterative Self-Healing** | On failure, the agent parses the exact terminal errors and sends a focused error report back to the LLM to fix the test. This retry loop continues until success or `max_retries` is reached. |
 
 ---
 
-### Project folder structure
+### Workflow Architecture (The 6 Phases)
+
+#### Phase 1: Ingestion & Discovery
+
+* The CLI accepts a target path (a single file, a local folder, or a Git repository URL) and project language.
+* The agent clones the files into a `.temp` workspace and scans the directory, automatically excluding build artifacts, `node_modules`, and existing tests.
+
+#### Phase 2: Project Analysis
+
+* An LLM strictly analyzes the project configuration files (like `package.json` or `tsconfig.json`).
+* It determines the required testing framework (Jest, Vitest, Mocha, etc.), the module system (ESM vs. CommonJS), and the necessary installation commands.
+
+#### Phase 3: Intelligent Planning
+
+* The LLM filters out non-testable files (e.g., pure interfaces or basic exports).
+* It maps the internal imports of the remaining files to build a **dependency graph**.
+* Files are sorted into a priority **todo list** so zero-dependency modules are tested first.
+
+#### Phase 4: Sandbox Initialization
+
+* The agent spins up **one** Docker container (`node:20-alpine`) and mounts the temporary QA workspace.
+* It writes the language-specific test configurations and runs `npm install` to prepare the environment.
+
+#### Phase 5: The Worker Loop (Execution & Self-Healing)
+
+* **Select:** Pops the next file from the priority todo list.
+* **Identify:** An LLM reviews the source code to map out required happy paths and edge cases.
+* **Generate:** The LLM drafts the test file, strictly adhering to the planned edge cases and calculated import paths.
+* **Execute:** The test is saved to the workspace and executed via the persistent Docker container.
+* **Self-Heal:** If the test fails, the terminal output is parsed for specific errors and fed back to the generator to fix the code.
+
+#### Phase 6: Finalization
+
+* **Report:** A final summary is compiled detailing pass/fail rates, retries used, and total token consumption.
+* **Teardown:** The Docker container is safely stopped and removed.
+
+---
+
+### Project Folder Structure
 
 ```text
 qa-agents/
@@ -75,45 +84,51 @@ qa-agents/
     │   ├── graph.py          # Wires the nodes and conditional edges together
     │   └── nodes/            # Single-responsibility execution steps
     │       ├── __init__.py
-    │       ├── init_docker.py     # Starts persistent container
-    │       ├── extract_files.py   # Gathers files from CLI path
-    │       ├── plan_strategy.py   # LLM sorts dependencies & builds Todo list
-    │       ├── select_next.py     # Pops next file from Todo list
-    │       ├── generate_test.py   # LLM writes the Jest test
-    │       └── run_test.py        # Appends test to Docker and runs it
+    │       ├── clone_files.py         # Phase 1: Ingests files/repos
+    │       ├── discover_files.py      # Phase 1: Filters target source code
+    │       ├── analyze_project.py     # Phase 2: Detects frameworks & configs
+    │       ├── plan_strategy.py       # Phase 3: Sorts dependencies & builds Todo list
+    │       ├── setup_sandbox.py       # Phase 4: Starts persistent container
+    │       ├── select_next_file.py    # Phase 5: Pops next file from Todo list
+    │       ├── identify_edge_cases.py # Phase 5: Maps test scenarios
+    │       ├── generate_test.py       # Phase 5: LLM writes/fixes the test
+    │       ├── execute_test.py        # Phase 5: Runs test in Docker & parses errors
+    │       ├── generate_report.py     # Phase 6: Compiles final run stats
+    │       └── teardown.py            # Phase 6: Kills the sandbox
     └── main.py               # CLI Entry Point (Typer/Rich)
+
 ```
-See [docs/nodes-and-tools.md](docs/nodes-and-tools.md) for implementation status and build levels, and [docs/nodes.md](docs/nodes.md) for detailed node specifications.
 
 ---
 
-### Visual workflow graph
+### Visual Workflow Graph
 
-The diagram below shows **one long-lived Docker sandbox**. After initialization, every test cycle **appends** files to that environment and **reuses** the same container to run Jest.
+The diagram below maps the execution flow of the LangGraph state machine. Notice how the Worker Loop continuously utilizes the **same** long-lived Docker sandbox without needing to reinstall dependencies.
 
 ```mermaid
 graph TD
-    A[Start] --> F[CLI Input: path, type, language]
+    A[Start] --> F[CLI Input: path, language]
 
-    %% --- 1. EXTRACTION PHASE ---
+    %% --- 1. INGESTION PHASE ---
     F --> G{Work type?}
     G -->|File| H[Single file]
     G -->|Folder| I[Folder tree]
     G -->|Repo| J[Clone repository]
 
-    H --> K[Extract files & move to .temp]
+    H --> K[Clone files & move to .temp]
     I --> K
     J --> K
+    K --> K0[Discover testable files]
 
     %% --- 2. ANALYSIS PHASE ---
-    K --> K1[Analyze project files & package.json]
-    K1 --> K2[Determine required test library <br> e.g., Jest, Vitest, Mocha]
+    K0 --> K1[Analyze project files & package.json]
+    K1 --> K2[Determine required test library <br> e.g., Jest, Vitest]
     K2 --> K3[Update State: active test_lib]
 
     %% --- 3. PLANNING PHASE ---
-    K3 --> L[LLM: Plan strategy & filter candidates]
-    L --> M[Build dependency graph]
-    M --> N[Create priority todo list]
+    K3 --> L[LLM: Filter candidates & analyze content]
+    L --> M[Build internal dependency graph]
+    M --> N[Topological Sort: priority todo list]
 
     %% --- 4. ENVIRONMENT SETUP ---
     N --> B[Init Docker Sandbox]
@@ -125,14 +140,15 @@ graph TD
     E --> O[Test generation loop]
 
     O --> P[Pop next file from todo_list]
-    P --> Q[LLM generates test <br> using State.test_lib]
+    P --> P1[Identify Edge Cases]
+    P1 --> Q[LLM generates test code]
 
     Q --> R[Save test to mounted workspace]
     R --> S[Execute test in persisted container]
     S --> T{Did test pass?}
 
     %% --- SELF-HEALING ---
-    T -->|No| U[Capture terminal stderr]
+    T -->|No| U[Parse targeted error scenarios]
     U --> V[LLM self-heals test code]
     V --> R
 
@@ -157,12 +173,5 @@ graph TD
     E -.->|entire loop uses| PERSISTENT_SANDBOX
     R -.-> PS2
     S -.-> PS3
+
 ```
-
-**How to read the sandbox subgraph:** from `Persist container` through every file in the todo loop, all work happens in **one** Docker process. New tests are **appended** to the workspace; the agent does **not** create a fresh container or run `npm install` again for each file.
-
----
-
-### Implementation note
-
-The repository is being built level by level. Today the graph includes **file discovery** (`extract_files`); planning, persistent sandbox nodes, and the full test loop are defined in the docs and added incrementally. The architecture above is the **target** behavior described in [docs/rule.md](docs/rule.md).

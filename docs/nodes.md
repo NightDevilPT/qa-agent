@@ -1,399 +1,352 @@
-# Complete Nodes List — What We Need to Build
+Here is the fully updated `nodes.md` file reflecting your exact current LangGraph implementation and file structure.
 
 ---
 
-## Total: 9 Action Nodes + 3 Conditional Routers = 12 Components
+# Complete Nodes List — What We Have Built
 
 ---
 
-## Action Nodes (9)
+## Total: 11 Action Nodes + 2 Conditional Routers = 13 Components
 
-### Node 1: `extract_files`
-| | |
-|---|---|
-| **File** | `src/workflow/nodes/extract_files.py` |
-| **Phase** | 1 — Ingestion |
+---
+
+## Action Nodes (11)
+
+### Node 1: `clone_files`
+
+|  |  |
+| --- | --- |
+| **File** | `src/workflow/nodes/clone_files.py` |
+| **Phase** | 1 — Ingestion & Extraction |
 | **Uses LLM?** | No |
-| **Signature** | `def extract_files(state: QAState) -> dict` |
+| **Signature** | `def clone_files(state: QAState) -> dict` |
 
-**Purpose:** Takes CLI input (file/folder/repo), creates `.temp/qa-agent-{uuid}` workspace, copies/clones project into it, scans for testable files.
+**Purpose:** Handles input processing (file, folder, or repo), generates a unique workspace ID, and securely copies/clones the project into the `.temp/qa-agent-{uuid}` directory.
 
 **Reads from state:**
-- `target_path` — path or repo URL
-- `input_type` — `"file"` | `"folder"` | `"repo"`
-- `project_language` — `"javascript"` | `"typescript"`
+
+* `target_path` / `repo_url`
+* `input_type` (`"file"`, `"folder"`, `"repo"`)
+* `project_language`
 
 **Returns to state:**
-- `workspace_path` — absolute path to `.temp/qa-agent-{uuid}/workspace`
-- `discovered_files` — list of relative file paths found
 
-**Logic:**
-- Generate workspace at `.temp/qa-agent-{random_id}/workspace`
-- If `repo` → `git clone` into workspace
-- If `folder` → copy entire folder into workspace
-- If `file` → create `src/` in workspace, copy file there
-- Walk workspace, find files matching language extensions
-- Apply exclude patterns from language config + `.gitignore`
-- Filter out existing test files
+* `workspace_root` — Absolute path to the isolated working directory.
 
-**Next:** → `analyze_test_lib`
+**Next:** → `discover_files`
 
 ---
 
-### Node 2: `analyze_test_lib`
-| | |
-|---|---|
-| **File** | `src/workflow/nodes/analyze_test_lib.py` |
-| **Phase** | 2 — Analysis |
-| **Uses LLM?** | No |
-| **Signature** | `def analyze_test_lib(state: QAState) -> dict` |
+### Node 2: `discover_files`
 
-**Purpose:** Reads actual project files to detect test framework, module system, dependencies, TypeScript usage, import patterns. Generates complete `test_lib_config` for downstream nodes.
+|  |  |
+| --- | --- |
+| **File** | `src/workflow/nodes/discover_files.py` |
+| **Phase** | 1 — File Discovery |
+| **Uses LLM?** | No |
+| **Signature** | `def discover_files(state: QAState) -> dict` |
+
+**Purpose:** Scans the `workspace_root` to find all available files. Filters out build artifacts, `node_modules`, and existing test files based on exclusion patterns.
 
 **Reads from state:**
-- `workspace_path`
-- `discovered_files`
-- `project_language`
+
+* `workspace_root`
+* `project_language`
 
 **Returns to state:**
-- `project_analysis` — single object containing ALL analysis results:
-  - `test_lib` — `"jest"` | `"vitest"` | `"mocha"` | `"jasmine"` | `"none"`
-  - `test_lib_config` — install packages, config files, test command, framework hints
-  - `module_system` — `"esm"` | `"commonjs"` | `"mixed"`
-  - `uses_typescript` — boolean
-  - `has_package_json` — boolean
-  - `project_dependencies` — all deps from package.json
-  - `external_dependencies` — external packages found in imports
-  - `per_file_imports` — map of file → list of imports
-  - `path_aliases` — from tsconfig
-  - `existing_test_config` — found test config content
-  - `existing_test_files` — already present test files
-  - `entry_points` — main files
-  - `is_monorepo` — boolean
-  - `language_config` — full language config reference
 
-**Logic:**
-- Read `package.json` → detect test framework from deps
-- If no framework found → use `default_test_lib` from language config
-- Look up framework in `available_test_libs` → get full config
-- Read `tsconfig.json` → extract compiler options, path aliases
-- Scan every discovered file → detect import/require patterns
-- Build `per_file_imports` map
-- Collect external dependency names
-- Check for existing test files and configs
-- Generate complete `test_lib_config` with install packages, commands, hints
+* `file_to_be_process` — List of all potentially relevant relative file paths.
+
+**Next:** → `analyze_project`
+
+---
+
+### Node 3: `analyze_project`
+
+|  |  |
+| --- | --- |
+| **File** | `src/workflow/nodes/analyze_project.py` |
+| **Phase** | 2 — Project Analysis |
+| **Uses LLM?** | Yes — with structured output (`SetupFilesOutput`, `ProjectAnalysisOutput`) |
+| **Signature** | `def analyze_project(state: QAState) -> dict` |
+
+**Purpose:** A 2-step LLM extraction process. Step 1 finds setup files (like `package.json`). Step 2 reads them to detect the test framework, module system, and configurations.
+
+**Reads from state:**
+
+* `workspace_root`
+* `file_to_be_process`
+* `project_language`
+
+**Returns to state:**
+
+* `project_analysis` — Dictionary containing `test_lib`, `module_system`, `project_dependencies`, and `test_lib_config` (install/test commands).
+* Token usage tracking.
 
 **Next:** → `plan_strategy`
 
 ---
 
-### Node 3: `plan_strategy`
-| | |
-|---|---|
+### Node 4: `plan_strategy`
+
+|  |  |
+| --- | --- |
 | **File** | `src/workflow/nodes/plan_strategy.py` |
 | **Phase** | 3 — Planning |
-| **Uses LLM?** | Yes — with structured output (`PlanStrategyOutput`) |
+| **Uses LLM?** | Yes — with structured output (`Step1CandidateFiles`, `Step2FileAnalysis`) |
 | **Signature** | `def plan_strategy(state: QAState) -> dict` |
 
-**Purpose:** Uses LLM to decide which files are testable, builds dependency graph, creates prioritized todo list.
+**Purpose:** AI filters out boilerplate, reads remaining files to map internal dependencies, and performs a topological sort so zero-dependency files are tested first.
 
 **Reads from state:**
-- `discovered_files`
-- `project_analysis` — specifically: `per_file_imports`, `external_dependencies`, `existing_test_files`, `module_system`, `uses_typescript`
+
+* `workspace_root`
+* `file_to_be_process`
 
 **Returns to state:**
-- `todo_list` — priority-ordered list of files to test
-- `dependency_graph` — map of file → its dependencies
-- `skipped_files` — files skipped with reason
-- `file_statuses` — initialized ledger for all files
 
-**Logic:**
-- Build prompt with discovered files + import information
-- LLM classifies each file: TEST or SKIP (with reason)
-- For testable files: determines dependencies from `per_file_imports`
-- Sorts by dependency depth (no-deps first)
-- Returns structured output via `with_structured_output(PlanStrategyOutput)`
+* `todo_list` — Priority-ordered list of files to test.
+* `dependency_graph` — Map of file imports.
+* `file_statuses` — Initialized ledger for tracking completion and retries.
+* Token usage tracking.
 
-**Next:** → `after_plan` (router R1)
+**Next:** → `setup_sandbox`
 
 ---
 
-### Node 4: `init_docker`
-| | |
-|---|---|
-| **File** | `src/workflow/nodes/init_docker.py` |
-| **Phase** | 4 — Environment Setup |
-| **Uses LLM?** | No |
-| **Signature** | `def init_docker(state: QAState) -> dict` |
+### Node 5: `setup_sandbox`
 
-**Purpose:** Creates persistent Docker container, mounts workspace, installs all dependencies once.
+|  |  |
+| --- | --- |
+| **File** | `src/workflow/nodes/setup_sandbox.py` |
+| **Phase** | 4 — Environment Preparation |
+| **Uses LLM?** | No |
+| **Signature** | `def setup_sandbox(state: QAState) -> dict` |
+
+**Purpose:** Initializes the persistent Docker container (`node:20-alpine`), writes framework config files, and runs `npm install`.
 
 **Reads from state:**
-- `workspace_path`
-- `project_analysis` — specifically: `test_lib_config`, `has_package_json`, `uses_typescript`, `module_system`, `language_config`
+
+* `workspace_root`
+* `project_language`
+* `project_analysis`
 
 **Returns to state:**
-- `container_id` — Docker container ID
-- `sandbox_ready` — `True`
 
-**Logic:**
-- Get Docker image from `language_config`
-- Create container with `tail -f /dev/null` (persistent)
-- Mount workspace at `/workspace`
-- If project has `package.json` → run `npm install` (installs existing deps + test lib if missing)
-- If no `package.json` → generate one with `test_lib_config.install_packages`, then `npm install`
-- Generate framework config files (`jest.config.js`, `tsconfig.json`, etc.) from `test_lib_config.config_files`
-- Container stays running for entire workflow
+* `sandbox_ready` — Boolean indicating successful setup.
 
 **Next:** → `select_next_file`
 
 ---
 
-### Node 5: `select_next_file`
-| | |
-|---|---|
+### Node 6: `select_next_file`
+
+|  |  |
+| --- | --- |
 | **File** | `src/workflow/nodes/select_next_file.py` |
 | **Phase** | 5 — Worker Loop |
 | **Uses LLM?** | No |
 | **Signature** | `def select_next_file(state: QAState) -> dict` |
 
-**Purpose:** Pops next PENDING file from todo list, sets as current work item.
+**Purpose:** Queue manager that pops the next `pending` file from the `todo_list`, reads its source code, and sets it as the active item.
 
 **Reads from state:**
-- `todo_list`
-- `file_statuses`
+
+* `todo_list`
+* `file_statuses`
+* `workspace_root`
 
 **Returns to state:**
-- `current_file` — next file path or `None`
-- `retry_count` — reset to `0`
-- Updated `file_statuses` — marks file as `IN_PROGRESS`
 
-**Logic:**
-- Find first item in `todo_list` with status `PENDING`
-- If found → set `current_file`, mark `IN_PROGRESS`, reset `retry_count`
-- If not found → set `current_file = None`
+* `current_status` — Resets active tracking (`current_file`, `current_source_code`, `retries`).
+* `file_statuses` — Updates target file to `in_progress`.
 
-**Next:** → `after_select_next` (router R2)
+**Next:** → `route_after_select` (Router R1)
 
 ---
 
-### Node 6: `generate_test`
-| | |
-|---|---|
+### Node 7: `identify_edge_cases`
+
+|  |  |
+| --- | --- |
+| **File** | `src/workflow/nodes/identify_edge_cases.py` |
+| **Phase** | 5 — Worker Loop (Pre-Generation) |
+| **Uses LLM?** | Yes — with structured output (`EdgeCasePlan`) |
+| **Signature** | `def identify_edge_cases(state: QAState) -> dict` |
+
+**Purpose:** Analyzes the active file's source code and explicitly writes a checklist of happy paths, edge cases, and error handling scenarios to test. Skipped during retry loops.
+
+**Reads from state:**
+
+* `current_status`
+* `file_statuses`
+
+**Returns to state:**
+
+* Updated `current_status` — Injects `target_edge_cases`.
+* Updated `file_statuses` — Appends edge cases to the ledger.
+* Token usage tracking.
+
+**Next:** → `generate_test`
+
+---
+
+### Node 8: `generate_test`
+
+|  |  |
+| --- | --- |
 | **File** | `src/workflow/nodes/generate_test.py` |
 | **Phase** | 5 — Worker Loop |
 | **Uses LLM?** | Yes |
 | **Signature** | `def generate_test(state: QAState) -> dict` |
 
-**Purpose:** Generates test code for current file. Has two modes — fresh generation and self-heal fix.
+**Purpose:** Writes or fixes the unit test. Injects calculated relative import paths, dependency context, and the required edge case checklist. During retries, it uses the targeted error log to self-heal.
 
 **Reads from state:**
-- `current_file`
-- `workspace_path`
-- `project_analysis` — specifically: `test_lib_config.framework_hints`, `module_system`, `path_aliases`, `uses_typescript`
-- `retry_count` — if > 0, read `last_error` for fix mode
-- `last_error` — only in retry mode
-- `generated_test_code` — previous failing code, only in retry mode
+
+* `current_status`
+* `file_statuses`
+* `dependency_graph`
+* `project_analysis`
+* `workspace_root`
 
 **Returns to state:**
-- `current_test_path` — path to written test file
-- `generated_test_code` — the test source code
 
-**Logic:**
-- Read source code of `current_file`
-- **If `retry_count == 0` (fresh):** build prompt with source + framework hints
-- **If `retry_count > 0` (retry):** build prompt with source + previous test + error output
-- Call LLM to generate/fix test
-- Write test to `tests/` preserving directory structure
-- Return test path and code
+* `file_statuses` — Updates `test_file_path` and token consumption.
+* Token usage tracking.
+* *(Writes actual file to the Docker workspace)*
 
-**Next:** → `run_test`
+**Next:** → `execute_test`
 
 ---
 
-### Node 7: `run_test`
-| | |
-|---|---|
-| **File** | `src/workflow/nodes/run_test.py` |
+### Node 9: `execute_test`
+
+|  |  |
+| --- | --- |
+| **File** | `src/workflow/nodes/execute_test.py` |
 | **Phase** | 5 — Worker Loop |
-| **Uses LLM?** | No |
-| **Signature** | `def run_test(state: QAState) -> dict` |
+| **Uses LLM?** | Yes — with structured output for error parsing (`TestParserOutput`) |
+| **Signature** | `def execute_test(state: QAState) -> dict` |
 
-**Purpose:** Executes test inside persistent container, captures result, decides PASS/RETRY/FAILED.
+**Purpose:** Runs the test inside the Docker sandbox. If tests fail, it uses an LLM to parse the terminal output and extract exactly *which* scenarios failed, creating a focused error report. Updates the edge case ledger.
 
 **Reads from state:**
-- `container_id`
-- `current_test_path`
-- `current_file`
-- `project_analysis` — specifically: `test_lib_config.per_file_test_cmd`, `test_lib_config.test_timeout`
-- `retry_count`
-- `max_retries`
+
+* `workspace_root`
+* `project_analysis`
+* `current_status`
+* `file_statuses`
+* `max_retries`
 
 **Returns to state:**
-- `test_result` — `"PASS"` | `"RETRY"` | `"FAILED"`
-- `retry_count` — incremented or reset
-- `last_error` — stderr output (for retry)
-- `test_output` — full terminal output
-- Updated `file_statuses` — COMPLETED or FAILED
-- Updated `todo_list` — mark file done
 
-**Logic:**
-- Format test command: `test_lib_config.per_file_test_cmd` with `{test_path}`
-- Execute via `sandbox.exec_command(container_id, command)`
-- If exit_code == 0 → `test_result = "PASS"`, mark COMPLETED
-- If exit_code != 0 and `retry_count < max_retries` → `test_result = "RETRY"`, store `last_error`
-- If exit_code != 0 and `retry_count >= max_retries` → `test_result = "FAILED"`, mark FAILED
+* Updated `current_status` — `test_passed`, `retries`, `error_log` (Targeted report).
+* Updated `file_statuses` — Marks edge cases as passed/failed.
+* Token usage tracking.
 
-**Next:** → `after_run_test` (router R3)
+**Next:** → `route_after_execute` (Router R2)
 
 ---
 
-### Node 8: `generate_report`
-| | |
-|---|---|
+### Node 10: `generate_report`
+
+|  |  |
+| --- | --- |
 | **File** | `src/workflow/nodes/generate_report.py` |
 | **Phase** | 6 — Finalization |
 | **Uses LLM?** | No |
 | **Signature** | `def generate_report(state: QAState) -> dict` |
 
-**Purpose:** Compiles final summary of entire QA run.
+**Purpose:** Compiles a final terminal string summarizing the run: total files, pass/fail rates, retries, and overall token usage.
 
 **Reads from state:**
-- `file_statuses`
-- `todo_list`
-- `skipped_files`
-- `discovered_files`
-- `project_analysis.test_lib`
-- `project_analysis.test_lib_config.name`
+
+* `file_statuses`
+* `total_tokens`
+* `project_analysis`
 
 **Returns to state:**
-- `final_report` — dict with all statistics
 
-**Logic:**
-- Count totals: discovered, tested, passed, failed, skipped
-- Per-file breakdown with retry counts
-- Display Rich table
-- Optionally write JSON report
+* `final_report` — The formatted string.
 
 **Next:** → `teardown`
 
 ---
 
-### Node 9: `teardown`
-| | |
-|---|---|
+### Node 11: `teardown`
+
+|  |  |
+| --- | --- |
 | **File** | `src/workflow/nodes/teardown.py` |
 | **Phase** | 6 — Finalization |
 | **Uses LLM?** | No |
 | **Signature** | `def teardown(state: QAState) -> dict` |
 
-**Purpose:** Stops and removes Docker container, optionally cleans workspace.
+**Purpose:** Safely shuts down and removes the persistent Docker container environment.
 
 **Reads from state:**
-- `container_id`
-- `workspace_path`
+
+* `container_id`
 
 **Returns to state:**
-- (cleanup confirmation)
 
-**Logic:**
-- If container exists → stop, force remove
-- Optional: clean `.temp/qa-agent-{uuid}` directory
+* `container_id` — `None`
+* `sandbox_ready` — `False`
 
 **Next:** → END
 
 ---
 
-## Conditional Routers (3)
+## Conditional Routers (2)
 
-### Router R1: `after_plan`
-| | |
-|---|---|
+### Router R1: `route_after_select`
+
+|  |  |
+| --- | --- |
 | **Location** | `src/workflow/graph.py` |
-| **Function** | `def after_plan(state: QAState) -> str` |
-| **Triggered after** | `plan_strategy` |
-
-**Decision:**
-| Condition | Return | Goes To |
-|-----------|--------|---------|
-| `todo_list` has PENDING items | `"init_docker"` | `init_docker` |
-| `todo_list` is empty | `"generate_report"` | `generate_report` |
-
----
-
-### Router R2: `after_select_next`
-| | |
-|---|---|
-| **Location** | `src/workflow/graph.py` |
-| **Function** | `def after_select_next(state: QAState) -> str` |
 | **Triggered after** | `select_next_file` |
 
 **Decision:**
+
 | Condition | Return | Goes To |
-|-----------|--------|---------|
-| `current_file` is not `None` | `"generate_test"` | `generate_test` |
-| `current_file` is `None` | `"generate_report"` | `generate_report` |
+| --- | --- | --- |
+| `current_file` is NOT `None` | `"identify_edge_cases"` | `identify_edge_cases` (Queue has files) |
+| `current_file` is `None` | `"generate_report"` | `generate_report` (Queue is empty) |
 
 ---
 
-### Router R3: `after_run_test`
-| | |
-|---|---|
+### Router R2: `route_after_execute`
+
+|  |  |
+| --- | --- |
 | **Location** | `src/workflow/graph.py` |
-| **Function** | `def after_run_test(state: QAState) -> str` |
-| **Triggered after** | `run_test` |
+| **Triggered after** | `execute_test` |
 
 **Decision:**
+
 | Condition | Return | Goes To |
-|-----------|--------|---------|
-| `test_result == "PASS"` | `"select_next_file"` | `select_next_file` (next file) |
-| `test_result == "FAILED"` | `"select_next_file"` | `select_next_file` (gave up) |
-| `test_result == "RETRY"` | `"generate_test"` | `generate_test` (self-heal loop) |
-
----
-
-## Files to Update
-
-| File | Action |
-|------|--------|
-| `src/workflow/state.py` | Add `ProjectAnalysis`, `TestLibConfig` TypedDicts. Add `workspace_path`, `project_analysis`, `test_result`, `last_error`, `retry_count`, `current_test_path`, `skipped_files` fields |
-| `src/workflow/nodes/extract_files.py` | **CREATE** |
-| `src/workflow/nodes/analyze_test_lib.py` | **CREATE** |
-| `src/workflow/nodes/plan_strategy.py` | **CREATE** |
-| `src/workflow/nodes/init_docker.py` | **CREATE** |
-| `src/workflow/nodes/select_next_file.py` | **CREATE** |
-| `src/workflow/nodes/generate_test.py` | **CREATE** |
-| `src/workflow/nodes/run_test.py` | **CREATE** |
-| `src/workflow/nodes/generate_report.py` | **CREATE** |
-| `src/workflow/nodes/teardown.py` | **CREATE** |
-| `src/workflow/graph.py` | **CREATE** — StateGraph + 3 conditional edges |
-| `src/workflow/nodes/__init__.py` | **UPDATE** — add all exports |
-| `src/workflow/__init__.py` | **UPDATE** — add graph exports |
-| `src/utils/prompts.py` | **CREATE** — build prompts for plan, generate, fix |
-| `src/utils/paths.py` | **CREATE** — path validation, repo clone |
-| `src/utils/sandbox.py` | **UPDATE** — add 3 methods for persistent container |
-| `src/main.py` | **CREATE** — CLI entry |
-| `src/constants/languages/javascript.py` | **REFACTOR** — restructure to `available_test_libs` catalog |
-| `src/constants/languages/typescript.py` | **REFACTOR** — same as above |
-| `src/constants/languages/config.py` | **UPDATE** — add helper functions |
+| --- | --- | --- |
+| `passed` == True | `"select_next_file"` | `select_next_file` (Success) |
+| `passed` == False AND `retries < max_retries` | `"generate_test"` | `generate_test` (Self-Heal Loop) |
+| `passed` == False AND `retries >= max_retries` | `"select_next_file"` | `select_next_file` (Permanent Fail) |
 
 ---
 
 ## Quick Summary Card
 
 | # | Node | Phase | LLM | Next |
-|---|------|-------|-----|------|
-| 1 | `extract_files` | Ingest | No | → `analyze_test_lib` |
-| 2 | `analyze_test_lib` | Analyze | No | → `plan_strategy` |
-| 3 | `plan_strategy` | Plan | Yes | → **R1** |
-| **R1** | `after_plan` | Router | — | → `init_docker` or `generate_report` |
-| 4 | `init_docker` | Env | No | → `select_next_file` |
-| 5 | `select_next_file` | Loop | No | → **R2** |
-| **R2** | `after_select_next` | Router | — | → `generate_test` or `generate_report` |
-| 6 | `generate_test` | Loop | Yes | → `run_test` |
-| 7 | `run_test` | Loop | No | → **R3** |
-| **R3** | `after_run_test` | Router | — | → `select_next_file` or `generate_test` |
-| 8 | `generate_report` | Final | No | → `teardown` |
-| 9 | `teardown` | Final | No | → END |
-
----
+| --- | --- | --- | --- | --- |
+| 1 | `clone_files` | Ingest | No | → `discover_files` |
+| 2 | `discover_files` | Discover | No | → `analyze_project` |
+| 3 | `analyze_project` | Analyze | **Yes** | → `plan_strategy` |
+| 4 | `plan_strategy` | Plan | **Yes** | → `setup_sandbox` |
+| 5 | `setup_sandbox` | Env | No | → `select_next_file` |
+| 6 | `select_next_file` | Loop | No | → **R1** |
+| **R1** | `route_after_select` | Router | — | → `identify_edge_cases` or `generate_report` |
+| 7 | `identify_edge_cases` | Loop | **Yes** | → `generate_test` |
+| 8 | `generate_test` | Loop | **Yes** | → `execute_test` |
+| 9 | `execute_test` | Loop | **Yes** | → **R2** |
+| **R2** | `route_after_execute` | Router | — | → `select_next_file` or `generate_test` |
+| 10 | `generate_report` | Final | No | → `teardown` |
+| 11 | `teardown` | Final | No | → END |

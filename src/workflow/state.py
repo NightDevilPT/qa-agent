@@ -32,6 +32,8 @@ class FileStatus(TypedDict):
     test_file_path: Optional[str]
     error_log: Optional[str]
     tokens_used: int  # Tokens consumed generating and fixing tests for this specific file
+    # --- NEW: Store the planned edge cases ---
+    edge_cases: Dict[str, Dict[str, str]]
 
 class CurrentFileStatus(TypedDict):
     """Tracks the active file being processed in the worker loop."""
@@ -42,6 +44,8 @@ class CurrentFileStatus(TypedDict):
     retries: int
     is_error: bool
     error_log: Optional[str]
+    # --- NEW: Holds the active list of edge cases to pass to the generator ---
+    target_edge_cases: List[str]
 
 # --- Project Analysis & Configuration Types ---
 class TestLibConfig(TypedDict, total=False):
