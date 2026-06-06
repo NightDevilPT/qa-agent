@@ -10,15 +10,13 @@ Uses LLM with structured output to analyze the workspace and determine:
 """
 
 from pathlib import Path
-from typing import List, Dict, Any
-
+from typing import List, Dict
 from pydantic import BaseModel, Field
-from langchain_core.messages import AIMessage
 
 # Local module imports
 from workflow.state import QAState
 from utils.logger import get_logger
-from utils.llm import get_llm
+from utils.llm import get_llm, extract_token_usage
 
 log = get_logger("analyze_project")
 
@@ -45,22 +43,6 @@ class ProjectAnalysisOutput(BaseModel):
     module_system: str = Field(description="Module system: esm, commonjs, or mixed")
     project_dependencies: Dict[str, str] = Field(default_factory=dict, description="Dependencies from package.json")
     test_lib_config: TestLibConfigOutput = Field(description="Test framework configuration details")
-
-
-# ================================================================
-# Utilities
-# ================================================================
-
-def _extract_token_usage(response: AIMessage) -> int:
-    """Extract total token usage safely from raw AIMessage metadata."""
-    try:
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            return response.usage_metadata.get("total_tokens", 0)
-        if hasattr(response, "response_metadata") and response.response_metadata:
-            return response.response_metadata.get("token_usage", {}).get("total_tokens", 0)
-    except Exception:
-        pass
-    return 0
 
 
 # ================================================================
@@ -112,7 +94,7 @@ Available Files:
     step1_response = step1_llm.invoke(prompt_1)
     
     setup_files = step1_response["parsed"].setup_files
-    node_token_count += _extract_token_usage(step1_response["raw"])
+    node_token_count += extract_token_usage(step1_response["raw"])
     log.info("Identified %d setup files: %s", len(setup_files), setup_files)
 
     if not setup_files:
@@ -160,7 +142,7 @@ Extraction Rules:
     step2_response = step2_llm.invoke(prompt_2)
     
     analysis: ProjectAnalysisOutput = step2_response["parsed"]
-    node_token_count += _extract_token_usage(step2_response["raw"])
+    node_token_count += extract_token_usage(step2_response["raw"])
 
     log.info("Test framework: %s", analysis.test_lib)
     log.info("Module system:  %s", analysis.module_system)

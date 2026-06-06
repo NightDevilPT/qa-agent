@@ -20,7 +20,7 @@ import os
 from typing import Literal
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-
+from langchain_core.messages import AIMessage
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -136,3 +136,19 @@ def list_available_providers() -> dict:
         "docker": True,  # Always available (assumes Docker is running)
         "gemini": bool(GEMINI_API_KEY)
     }
+
+
+
+def extract_token_usage(response: AIMessage) -> int:
+    """
+    Extract total token usage safely from raw AIMessage metadata.
+    Shared utility used across all LangGraph nodes.
+    """
+    try:
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            return response.usage_metadata.get("total_tokens", 0)
+        if hasattr(response, "response_metadata") and response.response_metadata:
+            return response.response_metadata.get("token_usage", {}).get("total_tokens", 0)
+    except Exception:
+        pass
+    return 0

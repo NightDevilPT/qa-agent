@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage
 
 from workflow.state import QAState, FileStatus
 from utils.logger import get_logger
-from utils.llm import get_llm
+from utils.llm import get_llm, extract_token_usage
 
 log = get_logger("plan_strategy")
 
@@ -43,21 +43,6 @@ class Step2FileAnalysis(BaseModel):
         description="List of OTHER internal file paths this file imports/uses."
     )
 
-
-# ================================================================
-# Utilities
-# ================================================================
-
-def _extract_token_usage(response: AIMessage) -> int:
-    """Extract total token usage safely from raw AIMessage metadata."""
-    try:
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            return response.usage_metadata.get("total_tokens", 0)
-        if hasattr(response, "response_metadata") and response.response_metadata:
-            return response.response_metadata.get("token_usage", {}).get("total_tokens", 0)
-    except Exception:
-        pass
-    return 0
 
 def _read_file_head(workspace_root: str, file_path: str, max_chars: int = 2000) -> Optional[str]:
     """Reads the file content (truncated to protect the LLM context window)."""
@@ -125,7 +110,7 @@ Files to evaluate:
     step1_response = step1_llm.invoke(prompt_1)
     
     candidates = step1_response["parsed"].candidate_files
-    step1_tokens = _extract_token_usage(step1_response["raw"])
+    step1_tokens = extract_token_usage(step1_response["raw"])
     
     # Record Step 1 tokens
     node_token_count += step1_tokens
@@ -165,7 +150,7 @@ Extraction Rules:
         try:
             response = step2_llm.invoke(prompt_2)
             parsed: Step2FileAnalysis = response["parsed"]
-            file_tokens = _extract_token_usage(response["raw"])
+            file_tokens = extract_token_usage(response["raw"])
             
             # Record Step 2 tokens for this specific file
             node_token_count += file_tokens

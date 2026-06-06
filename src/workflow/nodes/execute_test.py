@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from workflow.state import QAState
 from utils.logger import get_logger
 from utils.sandbox import create_sandbox
-from utils.llm import get_llm
+from utils.llm import get_llm, extract_token_usage
 from constants.languages.config import get_language_config
 
 log = get_logger("execute_test")
@@ -26,14 +26,6 @@ class TestParserOutput(BaseModel):
         default_factory=list, 
         description="List of all failed tests extracted from the terminal output."
     )
-
-def _extract_token_usage(response) -> int:
-    try:
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            return response.usage_metadata.get("total_tokens", 0)
-    except Exception:
-        pass
-    return 0
 
 def execute_test(state: QAState) -> dict:
     log.start("Execute Test Node — Running Sandbox & Parsing Results")
@@ -135,7 +127,7 @@ Terminal Output:
 {terminal_tail}"""
 
         response = structured_llm.invoke(parse_prompt)
-        llm_tokens = _extract_token_usage(response["raw"])
+        llm_tokens = extract_token_usage(response["raw"])
         parsed_failures: TestParserOutput = response["parsed"]
         
         # Build the Targeted Error Report for the generate_test node

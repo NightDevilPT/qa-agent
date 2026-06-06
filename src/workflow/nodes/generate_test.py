@@ -7,17 +7,10 @@ import os
 from pathlib import Path
 from workflow.state import QAState
 from utils.logger import get_logger
-from utils.llm import get_llm
+from utils.llm import get_llm, extract_token_usage
 
 log = get_logger("generate_test")
 
-def _extract_token_usage(response) -> int:
-    try:
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            return response.usage_metadata.get("total_tokens", 0)
-    except Exception:
-        pass
-    return 0
 
 def generate_test(state: QAState) -> dict:
     log.start("Generate Test Node — Writing Code")
@@ -156,7 +149,7 @@ Rules:
 
     # 7. Invoke LLM
     response = llm.invoke(prompt)
-    tokens_used = _extract_token_usage(response)
+    tokens_used = extract_token_usage(response)
     
     raw_content = response.content
     if isinstance(raw_content, list):

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from workflow.state import QAState
 from utils.logger import get_logger
-from utils.llm import get_llm
+from utils.llm import get_llm, extract_token_usage
 
 log = get_logger("identify_edge_cases")
 
@@ -19,13 +19,6 @@ class EdgeCasePlan(BaseModel):
         description="A detailed list of test scenarios, including both happy paths and edge cases (e.g., 'should throw an error if price is negative')."
     )
 
-def _extract_token_usage(response) -> int:
-    try:
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            return response.usage_metadata.get("total_tokens", 0)
-    except Exception:
-        pass
-    return 0
 
 def identify_edge_cases(state: QAState) -> dict:
     log.start("Identify Edge Cases Node — Planning Scenarios")
@@ -66,7 +59,7 @@ Provide a comprehensive list of what needs to be tested."""
     # Invoke LLM
     response = structured_llm.invoke(prompt)
     parsed: EdgeCasePlan = response["parsed"]
-    tokens_used = _extract_token_usage(response["raw"])
+    tokens_used = extract_token_usage(response["raw"])
     
     edge_cases_list = parsed.scenarios
     log.info("Identified %d edge cases for %s", len(edge_cases_list), current_file)
