@@ -3,6 +3,7 @@
 This document details the complete architectural flow, filtering rules, LLM Dockerfile creation, transitive hash invalidation, parallel LangGraph fan-out, smart self-healing, and token-efficiency guidelines for building the **Autonomous QA Agent**.
 
 ### System Documentation Index:
+
 - 📖 [System Architecture & Workflow Specification](file:///c:/Users/Pawan/Desktop/FullStackProject/qa-agents/docs/QA_AGENT_FLOW.md)
 - ⚙️ [LangGraph 13-Node Technical Specification](file:///c:/Users/Pawan/Desktop/FullStackProject/qa-agents/docs/LANGGRAPH_NODES_SPEC.md)
 - 📁 [Project Codebase Structure & Installed Dependencies Guide](file:///c:/Users/Pawan/Desktop/FullStackProject/qa-agents/docs/PROJECT_STRUCTURE.md)
@@ -31,8 +32,8 @@ flowchart TD
         F2 --> G
     end
 
-    subgraph Phase3["Phase 3: Transitive Hash Invalidation & AST Clustering"]
-        G --> H["Node 4: classify_files_node<br/>⚡ Transitive Content Hash: sha256(file + imported_deps)<br/>If imported dependency changes ➔ Invalidate & Queue!<br/>Cluster files by AST shape (e.g. 40 CRUD Controllers)"]
+    subgraph Phase3["Phase 3: File Classification & Topological Grouping"]
+        G --> H["Node 4: classify_files_node<br/>⚡ Classify Testable vs Non-Testable Files<br/>Uses logic_signatures & language_rules from Node 3 QAState<br/>Populates state.testable_files & state.non_testable_files"]
         H --> I["Node 5: topological_sort_node<br/>Build Dependency Graph & Group into Parallel Levels"]
         I --> J["Output Topological Levels:<br/>Level 0 (Leaf Utils) ➔ Level 1 (Services) ➔ Level 2 (Controllers)"]
     end
@@ -51,7 +52,7 @@ flowchart TD
         P --> Q{"Is todo_queue empty OR total_tokens >= max_token_budget?"}
         Q -- "Yes (Done / Token Cap Reached)" --> AF["Node 12: generate_report_node"]
         Q -- "No (Process Batch)" --> R["Node 8: check_existing_test_prompt_node<br/>⚡ Check existing_tests_mode: ask | always | never"]
-        
+
         R --> S{"Existing Test Found?"}
         S -- "Yes AND mode == ask" --> T{"Interactive User Prompt:<br/>File already has test. Generate new test? [y/N]"}
         S -- "Yes AND mode == always" --> U["Move to state.non_testable_files<br/>Reason: SKIPPED_EXISTING_TEST_PRESERVED"]
@@ -59,7 +60,7 @@ flowchart TD
         U --> P
         T -- "User Says YES" --> V["Node 9: generate_test_node<br/>🤖 Parallel Fan-Out (LangGraph Send API)<br/>Template 1 AST Cluster reference test ➔ Adapt 39 clones"]
         S -- "No Existing Test OR mode == never" --> V
-        
+
         V --> W["Node 10: execute_docker_test_node<br/>Execute batch tests in Docker (30s timeout per test)"]
         W --> X{"Test Exit Code == 0?"}
         X -- "Yes (PASSED)" --> Y["Add to state.completed_files"]
@@ -86,12 +87,13 @@ flowchart TD
 A major flaw in basic file hashing is that if `mathUtils.py` changes, `paymentService.py` (which imports `mathUtils.py`) appears "unchanged" if only its own content hash is checked.
 
 ### Transitive Hash Formula:
+
 Node 4 (`classify_files_node`) computes a **Transitive Content Hash** for every file:
 
 $$\text{TransitiveHash}(F) = \text{sha256}\left(\text{content}(F) + \sum_{D \in \text{imports}(F)} \text{content}(D)\right)$$
 
-* **Result:** If `mathUtils.py` changes, its new hash automatically invalidates `paymentService.py` and `checkoutController.py`, forcing them to be re-tested!
-* If neither the file nor any of its imported dependencies changed, the file is skipped safely (`reason: "UNCHANGED_TRANSITIVE_HASH_SKIPPED"`).
+- **Result:** If `mathUtils.py` changes, its new hash automatically invalidates `paymentService.py` and `checkoutController.py`, forcing them to be re-tested!
+- If neither the file nor any of its imported dependencies changed, the file is skipped safely (`reason: "UNCHANGED_TRANSITIVE_HASH_SKIPPED"`).
 
 ---
 
@@ -102,9 +104,9 @@ To exploit structural code repetition across large codebases (e.g. 40 CRUD contr
 1. Node 4 computes an **AST Shape Signature** for each testable file.
 2. Group files into **Structural Clusters** (e.g., `[UserController, ProductController, CategoryController, OrderController]`).
 3. **Template & Adapt Execution:**
-   * Node 9 generates **1 Master Reference Test** for `UserController.test.ts` (~800 tokens).
-   * For the remaining 39 controllers, Node 9 uses a fast micro-prompt (~50 tokens):
-     > *"Adapt `UserController.test.ts` template for `ProductController` (swap User with Product)."*
+    - Node 9 generates **1 Master Reference Test** for `UserController.test.ts` (~800 tokens).
+    - For the remaining 39 controllers, Node 9 uses a fast micro-prompt (~50 tokens):
+        > _"Adapt `UserController.test.ts` template for `ProductController` (swap User with Product)."_
 4. **Token Savings:** Saves **80%+ LLM tokens** across large repositories.
 
 ---
@@ -140,7 +142,7 @@ class QAState(TypedDict):
     image_name: Optional[str]                # qa-agent-{foldername}:{manifest_hash}
     manifest_hash: str                       # sha256 checksum of package.json/pyproject.toml
     existing_tests_mode: str                 # "ask" | "always" | "never" (Global CLI mode)
-    
+
     # Universal Ecosystem Profiler Results
     project_language: str                    # "typescript", "python", "go"
     project_type: str                        # "FRONTEND" | "BACKEND_API" | "LIBRARY"
@@ -152,7 +154,7 @@ class QAState(TypedDict):
     install_command: str                     # "npm install", "pip install"
     logic_signatures: Dict[str, Any]         # Control flow keywords & AST patterns
     ast_clusters: Dict[str, List[str]]       # Map of master_template_file -> [clone_files]
-    
+
     # State Lists & Queues
     testable_files: List[str]                # Confirmed files requiring test generation
     non_testable_files: List[NonTestableFile]# Skipped files + audit reasons
@@ -160,7 +162,7 @@ class QAState(TypedDict):
     topological_levels: List[List[str]]      # Grouped parallel execution levels
     completed_files: List[TestResultFile]    # Passed test files
     failed_files: List[TestResultFile]       # Failed test files or application bugs
-    
+
     # Execution Worker & Guardrails
     current_file_batch: List[str]            # Active parallel file batch for current level
     current_retries: int                     # Retries spent on current file batch
@@ -175,9 +177,9 @@ class QAState(TypedDict):
 
 To ensure smooth operation in both manual interactive audits and automated CI/CD pipelines, CLI supports `--skip-existing=ask|always|never`:
 
-* **`"always"` (CI / Unattended Mode Default):** Automatically skips all pre-existing tests without prompting. Moves skipped files to `state.non_testable_files` (`reason: "SKIPPED_EXISTING_TEST_PRESERVED"`). Zero human blocking!
-* **`"never"`:** Automatically overwrites / re-generates test cases for all files under `tests/qa_agent_generated/`.
-* **`"ask"` (Interactive Audit Mode):** Prompts the user once per file when an existing test is detected.
+- **`"always"` (CI / Unattended Mode Default):** Automatically skips all pre-existing tests without prompting. Moves skipped files to `state.non_testable_files` (`reason: "SKIPPED_EXISTING_TEST_PRESERVED"`). Zero human blocking!
+- **`"never"`:** Automatically overwrites / re-generates test cases for all files under `tests/qa_agent_generated/`.
+- **`"ask"` (Interactive Audit Mode):** Prompts the user once per file when an existing test is detected.
 
 ---
 
@@ -192,10 +194,10 @@ LangGraph uses the **`Send()` API** to fan-out Node 9 (`generate_test_node`) and
 def route_parallel_batch(state: QAState):
     if state["total_tokens_used"] >= state["max_token_budget"]:
         return "generate_report_node" # Force stop on token cap
-        
+
     if not state["current_file_batch"]:
         return "select_next_file_node" # Pop next level
-        
+
     # Parallel fan-out to worker nodes using LangGraph Send API
     return [
         Send("check_existing_test_prompt_node", {"current_file": file})

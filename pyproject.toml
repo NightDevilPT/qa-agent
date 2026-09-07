@@ -22,3 +22,8 @@ dependencies = [
     "python-dotenv>=1.2.2",
 ]
 
+[tool.pyright]
+include = ["src"]
+extraPaths = ["."]
+venvPath = "."
+venv = ".venv"

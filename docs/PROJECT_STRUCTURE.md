@@ -17,7 +17,8 @@ qa-agents/
 ├── docs/                             # Complete Specification Suite
 │   ├── QA_AGENT_FLOW.md              # High-Level Architecture & Execution Flow
 │   ├── LANGGRAPH_NODES_SPEC.md       # LangGraph 13-Node Technical Specification
-│   └── PROJECT_STRUCTURE.md          # Codebase Layout & Dependencies Reference
+│   ├── PROJECT_STRUCTURE.md          # Codebase Layout & Dependencies Reference
+│   └── RULES.md                      # System Architecture Rulebook & Abstract Service Interfaces
 │
 └── src/                              # Main Application Source Code
     ├── __init__.py
@@ -38,17 +39,8 @@ qa-agents/
     │   ├── terminal_service.py       # Interactive Terminal UI, Menus, Prompts & Dialogs
     │   ├── logger_service.py         # Rich Logging, Formatting & Progress Bar Services
     │   ├── checkpoint_service.py     # Local state.json Checkpoint & Snapshot Manager
-    │   │
-    │   ├── ast_service/              # Universal AST & Hash Analysis Engine
-    │   │   ├── __init__.py
-    │   │   ├── parser.py             # Tree-Sitter Universal Concrete Syntax Tree Wrapper
-    │   │   ├── hash_calculator.py    # Transitive Content Hash Engine
-    │   │   └── cluster_analyzer.py   # AST Structural Clustering (CRUD Controllers)
-    │   │
-    │   └── sandbox_service/          # Docker Container & Sandbox Lifecycle
-    │       ├── __init__.py
-    │       ├── container_manager.py  # Docker SDK Wrapper & Exec Runner
-    │       └── dockerfile_generator.py # LLM Dockerfile Generator ONCE & Layer Caching
+    │   ├── ast_service.py            # Node 4 File Classification Service (logic_signatures & language_rules)
+    │   └── sandbox_service.py        # Docker SDK Container & Sandbox Lifecycle Manager
     │
     └── workflow/                     # LangGraph State Machine Architecture
         ├── __init__.py
@@ -84,11 +76,11 @@ from src.llm_provider.factory import LLMProviderFactory
 llm = LLMProviderFactory.create_provider()
 ```
 
-| Provider Key | Class File | Configured in `.env` |
-| :--- | :--- | :--- |
-| `"docker"` | `providers/docker_provider.py` | `LLM_PROVIDER=docker` (Local Docker model endpoint) |
-| `"gemini"` | `providers/gemini_provider.py` | `LLM_PROVIDER=gemini` (Google Gemini Cloud API) |
-| `"openai"` | `providers/openai_provider.py` | `LLM_PROVIDER=openai` (OpenAI Cloud API) |
+| Provider Key | Class File                     | Configured in `.env`                                |
+| :----------- | :----------------------------- | :-------------------------------------------------- |
+| `"docker"`   | `providers/docker_provider.py` | `LLM_PROVIDER=docker` (Local Docker model endpoint) |
+| `"gemini"`   | `providers/gemini_provider.py` | `LLM_PROVIDER=gemini` (Google Gemini Cloud API)     |
+| `"openai"`   | `providers/openai_provider.py` | `LLM_PROVIDER=openai` (OpenAI Cloud API)            |
 
 ---
 
@@ -130,14 +122,14 @@ Select option [1-3] (default 2): 2
 
 ## 4. Service Component Responsibilities (`src/services/`)
 
-| Service Component | File / Path | Responsibility & Role |
-| :--- | :--- | :--- |
-| **Root Entrypoint** | `main.py` | Executed via `uv run main.py`. Triggers Node 1 interactive prompt menu and executes LangGraph state graph. |
-| **Terminal UI Service** | `src/services/terminal_service.py` | Handles ANSI color rendering, interactive input mode selection menus, path validation, confirmation dialogs, and styled summary boxes. |
-| **Logger Service** | `src/services/logger_service.py` | Manages Rich console logging, spinner animations during LLM execution, and formatted error logs. |
-| **Checkpoint Service** | `src/services/checkpoint_service.py` | Reads and writes snapshot checkpoints to `.temp/{name}-{uuid}/state.json` for crash recovery and instant `--resume`. |
-| **AST Analysis Service** | `src/services/ast_service/` | Wraps Tree-Sitter parser to calculate Transitive Content Hashes (`sha256(file + imports)`) and AST Structural Shape Clusters. |
-| **Sandbox Service** | `src/services/sandbox_service/` | Controls Docker SDK container lifecycle (`qa-agent-{foldername}`), single-instance LLM Dockerfile generation, layer caching, and 30s `docker exec` timeouts. |
+| Service Component        | File / Path                          | Responsibility & Role                                                                                                                                        |
+| :----------------------- | :----------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Root Entrypoint**      | `main.py`                            | Executed via `uv run main.py`. Triggers Node 1 interactive prompt menu and executes LangGraph state graph.                                                   |
+| **Terminal UI Service**  | `src/services/terminal_service.py`   | Handles ANSI color rendering, interactive input mode selection menus, path validation, confirmation dialogs, and styled summary boxes.                       |
+| **Logger Service**       | `src/services/logger_service.py`     | Manages Rich console logging, spinner animations during LLM execution, and formatted error logs.                                                             |
+| **Checkpoint Service**   | `src/services/checkpoint_service.py` | Reads and writes snapshot checkpoints to `.temp/{name}-{uuid}/state.json` for crash recovery and instant `--resume`.                                         |
+| **AST Analysis Service** | `src/services/ast_service.py`        | Single-purpose service for Node 4 file classification (matching `logic_signatures` & `language_rules` from `QAState`).                                       |
+| **Sandbox Service**      | `src/services/sandbox_service.py`    | Controls Docker SDK container lifecycle (`qa-agent-{foldername}`), single-instance LLM Dockerfile generation, layer caching, and 30s `docker exec` timeouts. |
 
 ---
 
@@ -145,20 +137,20 @@ Select option [1-3] (default 2): 2
 
 Below is the complete breakdown of the lean, 15-package dependency list in `pyproject.toml`:
 
-| Package Name | Installed Version | Technical Purpose in QA Agent Architecture |
-| :--- | :--- | :--- |
-| **`langgraph`** | `>=1.2.1` | **State Orchestration Engine:** Drives the 13-node state graph, manages conditional routing, checkpoint persistence, and `Send()` API parallel worker fan-out. |
-| **`langchain`** | `>=1.3.1` | **LLM Framework Core:** Provides standard abstractions for chains, prompts, and model interactions. |
-| **`langchain-core`** | `>=1.4.0` | Base interfaces for messages, runnables, and output parsers. |
-| **`langchain-openai`** | `>=1.2.2` | Provider integration for OpenAI GPT-4o / GPT-4o-mini models. |
-| **`langchain-google-genai`** | `>=4.2.4` | Provider integration for Google Gemini Flash / Pro models. |
-| **`docker`** | `>=7.1.0` | **Docker SDK for Python:** Programmatically manages containers, image builds, layer caching, and isolated `docker exec` test execution without using host OS. |
-| **`tree-sitter`** | `>=0.25.2` | **Universal AST Engine:** Language-agnostic Concrete Syntax Tree parser used for function body pruning, AST shape hashing, and structural clustering. |
-| **`typer`** | `>=0.25.1` | **CLI Application Framework:** Drives CLI commands (`uv run main.py`), options (`--skip-existing=ask`), and flags. |
-| **`rich`** | `>=15.0.0` | **Terminal UI:** Beautiful progress bars, status tables, colored logs, and interactive CLI prompts `[y/N]`. |
-| **`pydantic`** | `>=2.13.4` | Data validation and type enforcement for state update payloads and LLM JSON outputs. |
-| **`pydantic-settings`** | `>=2.14.1` | Loads and validates `.env` environment variables (`OPENAI_API_KEY`, `MAX_TOKEN_BUDGET`). |
-| **`gitpython`** | `>=3.1.50` | Git repository management for cloning target public Git repositories into `.temp/workspace/`. |
-| **`pathspec`** | `>=1.1.1` | Match files against `.gitignore` patterns to skip non-code files locally. |
-| **`httpx`** | `>=0.28.1` | Async HTTP client for external API requests and model endpoint communication. |
-| **`python-dotenv`** | `>=1.2.2` | Explicit `.env` environment variable loading. |
+| Package Name                 | Installed Version | Technical Purpose in QA Agent Architecture                                                                                                                     |
+| :--------------------------- | :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`langgraph`**              | `>=1.2.1`         | **State Orchestration Engine:** Drives the 13-node state graph, manages conditional routing, checkpoint persistence, and `Send()` API parallel worker fan-out. |
+| **`langchain`**              | `>=1.3.1`         | **LLM Framework Core:** Provides standard abstractions for chains, prompts, and model interactions.                                                            |
+| **`langchain-core`**         | `>=1.4.0`         | Base interfaces for messages, runnables, and output parsers.                                                                                                   |
+| **`langchain-openai`**       | `>=1.2.2`         | Provider integration for OpenAI GPT-4o / GPT-4o-mini models.                                                                                                   |
+| **`langchain-google-genai`** | `>=4.2.4`         | Provider integration for Google Gemini Flash / Pro models.                                                                                                     |
+| **`docker`**                 | `>=7.1.0`         | **Docker SDK for Python:** Programmatically manages containers, image builds, layer caching, and isolated `docker exec` test execution without using host OS.  |
+| **`tree-sitter`**            | `>=0.25.2`        | **Universal AST Engine:** Language-agnostic Concrete Syntax Tree parser used for function body pruning, AST shape hashing, and structural clustering.          |
+| **`typer`**                  | `>=0.25.1`        | **CLI Application Framework:** Drives CLI commands (`uv run main.py`), options (`--skip-existing=ask`), and flags.                                             |
+| **`rich`**                   | `>=15.0.0`        | **Terminal UI:** Beautiful progress bars, status tables, colored logs, and interactive CLI prompts `[y/N]`.                                                    |
+| **`pydantic`**               | `>=2.13.4`        | Data validation and type enforcement for state update payloads and LLM JSON outputs.                                                                           |
+| **`pydantic-settings`**      | `>=2.14.1`        | Loads and validates `.env` environment variables (`OPENAI_API_KEY`, `MAX_TOKEN_BUDGET`).                                                                       |
+| **`gitpython`**              | `>=3.1.50`        | Git repository management for cloning target public Git repositories into `.temp/workspace/`.                                                                  |
+| **`pathspec`**               | `>=1.1.1`         | Match files against `.gitignore` patterns to skip non-code files locally.                                                                                      |
+| **`httpx`**                  | `>=0.28.1`        | Async HTTP client for external API requests and model endpoint communication.                                                                                  |
+| **`python-dotenv`**          | `>=1.2.2`         | Explicit `.env` environment variable loading.                                                                                                                  |

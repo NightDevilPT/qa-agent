@@ -45,7 +45,7 @@ class TerminalService:
 
     def prompt_file_path(
         self,
-        prompt_msg: str = "Enter media file path (video/audio)",
+        prompt_msg: str = "Enter file path",
         default: Optional[str] = None,
         must_exist: bool = True,
     ) -> Path:

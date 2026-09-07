@@ -1,4 +1,4 @@
-"""Professional Terminal Logger Service for Auto-Dubber.
+"""Professional Terminal Logger Service for Autonomous QA Agent.
 
 Provides structured, colored console output with rich tables, panels,
 live status banners, prompt inspection blocks, and quality control evaluation dashboards.
@@ -20,9 +20,9 @@ from rich.text import Text
 if sys.platform == "win32":
     try:
         if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8")
+            getattr(sys.stdout, "reconfigure")(encoding="utf-8")
         if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(encoding="utf-8")
+            getattr(sys.stderr, "reconfigure")(encoding="utf-8")
     except Exception:
         pass
 
@@ -98,7 +98,7 @@ class FileFormatter(logging.Formatter):
 class LoggerService:
     """Professional Logger wrapper class supporting rich tables, panels, and dashboards."""
 
-    def __init__(self, name: str = "AutoDubber", log_file: Optional[Union[str, Path]] = None):
+    def __init__(self, name: str = "QAAgent", log_file: Optional[Union[str, Path]] = None):
         self.name = name
         self._logger = logging.getLogger(name)
         self._logger.setLevel(logging.DEBUG)
@@ -113,7 +113,7 @@ class LoggerService:
                 self.attach_file_logger(log_file)
 
     def attach_file_logger(self, log_file: Union[str, Path]) -> None:
-        """Attach a dedicated per-video log file handler inside .temp/[video_name]/logs/."""
+        """Attach a dedicated log file handler inside .temp/[run_id]/logs/."""
         log_path = Path(log_file).resolve()
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -300,17 +300,17 @@ class LoggerService:
 
 
 _active_loggers: Dict[str, LoggerService] = {}
-_current_video_log_file: Optional[Path] = None
+_current_run_log_file: Optional[Path] = None
 
 
-def configure_video_logger(temp_dir: Union[str, Path]) -> Path:
-    """Configure per-video log directory inside .temp/[video_name]/logs/auto_dubber.log."""
-    global _current_video_log_file
+def configure_qa_logger(temp_dir: Union[str, Path]) -> Path:
+    """Configure per-run log directory inside .temp/[run_id]/logs/qa_agent.log."""
+    global _current_run_log_file
     temp_path = Path(temp_dir).resolve()
     log_dir = temp_path / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "auto_dubber.log"
-    _current_video_log_file = log_file
+    log_file = log_dir / "qa_agent.log"
+    _current_run_log_file = log_file
 
     for logger_inst in _active_loggers.values():
         logger_inst.attach_file_logger(log_file)
@@ -318,21 +318,23 @@ def configure_video_logger(temp_dir: Union[str, Path]) -> Path:
     return log_file
 
 
-def get_logger(name: str = "AutoDubber", log_file: Optional[Union[str, Path]] = None) -> LoggerService:
+
+def get_logger(name: str = "QAAgent", log_file: Optional[Union[str, Path]] = None) -> LoggerService:
     """Factory helper to obtain a named LoggerService instance."""
     if name in _active_loggers:
         inst = _active_loggers[name]
         if log_file:
             inst.attach_file_logger(log_file)
-        elif _current_video_log_file:
-            inst.attach_file_logger(_current_video_log_file)
+        elif _current_run_log_file:
+            inst.attach_file_logger(_current_run_log_file)
         return inst
 
-    target_file = log_file or _current_video_log_file
+    target_file = log_file or _current_run_log_file
     inst = LoggerService(name=name, log_file=target_file)
     _active_loggers[name] = inst
     return inst
 
 
 # Default global logger instance
-logger = get_logger("AutoDubber")
+logger = get_logger("QAAgent")
+
