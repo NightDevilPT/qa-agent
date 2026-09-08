@@ -38,8 +38,15 @@ class ASTService:
         ext = file_path.suffix.lower()
 
         # 1. Check non-testable file extensions & filenames
-        non_testable_exts = language_rules.get("non_testable_extensions", [])
-        if ext in non_testable_exts or file_path.name in non_testable_exts:
+        raw_rules = language_rules.get("non_testable_extensions", [])
+        non_testable_set = set()
+        for item in raw_rules:
+            item_lower = item.lower()
+            non_testable_set.add(item_lower)
+            clean_ext = item_lower.lstrip("*")
+            non_testable_set.add(clean_ext)
+
+        if ext in non_testable_set or file_path.name.lower() in non_testable_set:
             return False, {
                 "source_file": rel_path,
                 "reason": f"Non-testable file extension or filename ({ext})",

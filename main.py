@@ -23,10 +23,12 @@ logger = get_logger("Main")
 
 def main() -> None:
     """Launch the Autonomous QA Agent State Machine pipeline."""
+    llm_provider = os.getenv("LLM_PROVIDER", "docker").upper()
     terminal_service.display_header(
         title="AUTONOMOUS QA AGENT SYSTEM",
-        subtitle="LangGraph Automated Test Generation & Sandbox Execution",
+        subtitle=f"LangGraph Automated Test Generation & Sandbox Execution | Active LLM Provider: {llm_provider}",
     )
+    logger.info(f"Active LLM Provider: {llm_provider}")
 
     try:
         logger.info("Executing Autonomous QA Agent LangGraph Pipeline...")

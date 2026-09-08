@@ -1,7 +1,7 @@
 """Node 1: Interactive Target Ingestion Node.
 
 Handles CLI argument resolution and terminal menu prompts for target mode selection
-(Single File, Folder Path, or Git Repository URL).
+(Folder Path or Git Repository URL).
 """
 
 from pathlib import Path
@@ -12,7 +12,7 @@ from src.workflow.state import QAState
 
 
 def ingest_target_node(state: QAState) -> Dict[str, Any]:
-    """Node 1: Interactively prompt user for target path and input mode if not preset.
+    """Node 1: Interactively prompt user for target path and input mode (FOLDER or GIT_REPO).
 
     Args:
         state: Active QAState dictionary.
@@ -29,29 +29,21 @@ def ingest_target_node(state: QAState) -> Dict[str, Any]:
     )
 
     mode_options = [
-        {"name": "Single File (Generate test for 1 file)", "code": "SINGLE_FILE"},
-        {"name": "Folder Path (Generate tests for full folder/project)", "code": "FOLDER"},
+        {"name": "Folder Path (Generate tests for project directory)", "code": "FOLDER"},
         {"name": "Git Repository URL (Clone public repo and generate tests)", "code": "GIT_REPO"},
     ]
 
     selected_mode_dict = terminal_service.prompt_select(
         prompt_msg="Select Target Input Mode",
         options=mode_options,
-        default_index=1  # Folder Path is default
+        default_index=0  # Folder Path is default
     )
     input_mode = selected_mode_dict["code"]
 
-    # 3. Prompt user for path / URL based on selected mode
+    # 2. Prompt user for path / URL based on selected mode
     target_path_str = ""
 
-    if input_mode == "SINGLE_FILE":
-        path_obj = terminal_service.prompt_file_path(
-            prompt_msg="Enter single source file path",
-            must_exist=True
-        )
-        target_path_str = str(path_obj)
-
-    elif input_mode == "FOLDER":
+    if input_mode == "FOLDER":
         while True:
             raw_input = terminal_service.prompt_text(
                 prompt_msg="Enter target folder path",

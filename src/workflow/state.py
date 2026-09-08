@@ -23,6 +23,7 @@ class TestResultFile(TypedDict, total=False):
     failure_category: Optional[str]  # "TOOLING_ERROR" | "BUSINESS_ASSERTION_BUG"
     retries_used: int
     execution_time_ms: int
+    tokens_used: int     # Tokens consumed generating and fixing tests for this specific file
 
 
 class QAState(TypedDict, total=False):
@@ -61,5 +62,6 @@ class QAState(TypedDict, total=False):
     current_file_batch: List[str]            # Active parallel file batch for current level
     current_retries: int                     # Retries spent on current file batch
     total_tokens_used: int                   # Cumulative tokens consumed across run
+    node_tokens: Dict[str, int]              # Tracks tokens used per LangGraph node (e.g., {"detect_ecosystem_node": 75})
     max_token_budget: int                    # Maximum token budget cap (default 50,000)
     per_test_timeout_sec: int                # Docker test execution timeout (default 30s)

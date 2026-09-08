@@ -16,16 +16,21 @@ This document defines the formal coding conventions, module organization standar
    * Concrete providers MUST inherit from `BaseLLMProvider` in `src/llm_provider/providers/base_provider.py`.
    * Register new providers in `LLMProviderFactory` (`src/llm_provider/factory.py`).
 
-3. **Utilities Placement (`src/utils/`)**:
+3. **Prompts Placement (`src/prompts/`)**:
+   * All LLM system prompts, prompt templates, and user prompt builder functions MUST be placed inside `src/prompts/` (e.g. `detect_ecosystem_prompt.py`, `generate_test_prompt.py`).
+   * Hardcoding inline prompt text inside node implementation files is strictly prohibited.
+   * Export prompt constants and builder functions in `src/prompts/__init__.py`.
+
+4. **Utilities Placement (`src/utils/`)**:
    * Any general helper utilities (e.g. path helpers, string formatters, hash calculators) MUST be placed inside `src/utils/`.
 
-4. **Workflow & State Machine (`src/workflow/`)**:
+5. **Workflow & State Machine (`src/workflow/`)**:
    * LangGraph state schema MUST be defined in `src/workflow/state.py` using Python `TypedDict`.
    * StateGraph initialization and routing logic MUST be defined in `src/workflow/graph.py`.
    * LangGraph node implementations MUST be placed in `src/workflow/nodes/`.
 
-5. **Import & Type Safety Rules**:
-   * Use absolute package imports (`from src.services.logger_service import get_logger`).
+6. **Import & Type Safety Rules**:
+   * Use absolute package imports (`from src.services.logger_service import logger`).
    * Configure `[tool.pyright]` in `pyproject.toml` with `extraPaths = ["."]` to ensure Pyright / IDE type checkers resolve imports from project root `.`.
    * Enforce strict type annotations and explicit non-null checks (e.g., `str(container.id) if container.id else ""`).
 
@@ -383,3 +388,17 @@ Whenever a new LangGraph Node is added to the system, you **MUST** follow this s
 
 5. **Step 5: Update State Schema (`src/workflow/state.py`)**:
    - If the new node introduces or mutates new keys in the state payload, add the corresponding typed fields to `QAState` in `src/workflow/state.py`.
+
+---
+
+## 6. Token Tracking & Accounting Standard
+
+1. **Global Token Running Total (`total_tokens_used: int`)**:
+   - Stores the cumulative total tokens consumed across all LLM calls during the run.
+
+2. **Per-Node Token Ledger (`node_tokens: Dict[str, int]`)**:
+   - Maps each node identifier to its cumulative token consumption (e.g. `{"detect_ecosystem_node": 75, "generate_test_node": 1420}`).
+
+3. **Per-File Token Ledger (`TestResultFile["tokens_used"]: int`)**:
+   - Records the exact tokens spent generating and self-healing test cases for a specific source file.
+

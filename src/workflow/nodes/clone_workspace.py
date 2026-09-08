@@ -1,20 +1,24 @@
 """Node 2: Workspace Cloning & Sandbox Initialization Node.
 
-Copies target folder/file or clones Git repository into isolated temporary
-workspace directory (.temp/{run_id}).
+Copies target folder or clones Git repository into isolated temporary
+workspace directory (.temp/{run_id}) with deterministic run_id hashing and state.json checkpointing.
 """
 
+import hashlib
 import shutil
-import uuid
 from pathlib import Path
 from typing import Any, Dict
 import git
+
+from src.services.checkpoint_service import checkpoint_service
 from src.services.logger_service import logger
 from src.workflow.state import QAState
 
 
 def clone_workspace_node(state: QAState) -> Dict[str, Any]:
     """Node 2: Create isolated temp workspace and clone/copy target source code.
+
+    Generates deterministic run_id from target_path to enable instant recovery on restart.
 
     Args:
         state: Active QAState dictionary.
@@ -25,27 +29,33 @@ def clone_workspace_node(state: QAState) -> Dict[str, Any]:
     target_path = state.get("target_path", "")
     input_mode = state.get("input_mode", "FOLDER")
 
-    # 1. Generate unique run_id (e.g., "my-project-8f3a1d")
+    # 1. Generate deterministic run_id from target_path (e.g. "my_project-8f3a1d")
     if input_mode == "GIT_REPO":
         repo_name = target_path.rstrip("/").split("/")[-1].replace(".git", "")
     else:
         repo_name = Path(target_path).stem or "workspace"
 
     clean_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in repo_name)
-    short_uuid = uuid.uuid4().hex[:6]
-    run_id = f"{clean_name}-{short_uuid}"
+    target_hash = hashlib.sha256(target_path.strip().encode("utf-8")).hexdigest()[:6]
+    run_id = f"{clean_name}-{target_hash}"
 
     # 2. Prepare workspace directory in .temp/{run_id}
     root_temp_dir = Path(".temp").resolve()
     workspace_dir = root_temp_dir / run_id
 
-    if workspace_dir.exists():
-        shutil.rmtree(workspace_dir, ignore_errors=True)
+    # 3. Check existing checkpoint in .temp/{run_id}/state.json for instant recovery
+    existing_checkpoint = checkpoint_service.load_checkpoint(workspace_dir)
+    if existing_checkpoint and workspace_dir.exists():
+        logger.info(f"[Node 2: CloneWorkspace] Found existing workspace and checkpoint for run_id '{run_id}'. Resuming execution.")
+        return {
+            "run_id": run_id,
+            "workspace_dir": str(workspace_dir)
+        }
 
     workspace_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"[Node 2: CloneWorkspace] Initializing workspace for run_id '{run_id}' at {workspace_dir}")
+    logger.info(f"[Node 2: CloneWorkspace] Initializing new workspace for run_id '{run_id}' at {workspace_dir}")
 
-    # 3. Clone or copy based on input_mode
+    # 4. Clone or copy based on input_mode
     if input_mode == "GIT_REPO":
         logger.info(f"[Node 2: CloneWorkspace] Cloning Git repository '{target_path}'...")
         git.Repo.clone_from(target_path, str(workspace_dir))
@@ -66,21 +76,11 @@ def clone_workspace_node(state: QAState) -> Dict[str, Any]:
         shutil.copytree(source_dir, workspace_dir, dirs_exist_ok=True, ignore=ignore_patterns)
         logger.info("[Node 2: CloneWorkspace] Project directory copied successfully.")
 
-    elif input_mode == "SINGLE_FILE":
-        source_file = Path(target_path).resolve()
-        dest_file = workspace_dir / source_file.name
-        shutil.copy2(source_file, dest_file)
-        logger.info(f"[Node 2: CloneWorkspace] Copied target file '{source_file.name}' into workspace.")
-
-        # Copy manifest file from parent folder if present
-        parent_dir = source_file.parent
-        for manifest_name in ("package.json", "pyproject.toml", "go.mod", "Cargo.toml", "requirements.txt"):
-            manifest_path = parent_dir / manifest_name
-            if manifest_path.exists():
-                shutil.copy2(manifest_path, workspace_dir / manifest_name)
-                logger.info(f"[Node 2: CloneWorkspace] Copied manifest file '{manifest_name}' into workspace.")
-
-    return {
+    res = {
         "run_id": run_id,
         "workspace_dir": str(workspace_dir)
     }
+
+    # Save state snapshot to state.json via CheckpointService
+    checkpoint_service.save_checkpoint(workspace_dir, {**state, **res})
+    return res
