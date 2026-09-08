@@ -14,6 +14,7 @@ from src.workflow.nodes import (
     clone_workspace_node,
     detect_ecosystem_node,
     ingest_target_node,
+    setup_docker_environment_node,
 )
 from src.workflow.state import QAState
 
@@ -30,16 +31,19 @@ def build_graph() -> StateGraph:
     builder.add_node("detect_ecosystem_node", detect_ecosystem_node)
     builder.add_node("classify_files_node", classify_files_node)
     builder.add_node("build_topological_queue_node", build_topological_queue_node)
+    builder.add_node("setup_docker_environment_node", setup_docker_environment_node)
 
-    # Define edges (START -> Node 1 -> Node 2 -> Node 3 -> Node 4 -> Node 5 -> END)
+    # Define edges (START -> Node 1 -> Node 2 -> Node 3 -> Node 4 -> Node 5 -> Node 6 -> END)
     builder.add_edge(START, "ingest_target_node")
     builder.add_edge("ingest_target_node", "clone_workspace_node")
     builder.add_edge("clone_workspace_node", "detect_ecosystem_node")
     builder.add_edge("detect_ecosystem_node", "classify_files_node")
     builder.add_edge("classify_files_node", "build_topological_queue_node")
-    builder.add_edge("build_topological_queue_node", END)
+    builder.add_edge("build_topological_queue_node", "setup_docker_environment_node")
+    builder.add_edge("setup_docker_environment_node", END)
 
     return builder
+
 
 
 def compile_graph():
@@ -67,8 +71,11 @@ def run_qa_agent() -> Dict[str, Any]:
     testable_count = len(final_state.get("testable_files") or [])
     non_testable_count = len(final_state.get("non_testable_files") or [])
     topo_levels = len(final_state.get("topological_levels") or [])
+    container_id = final_state.get("container_id", "N/A")
     logger.success(
         f"[Workflow] Pipeline execution finished for run_id '{run_id}' "
-        f"(Lang: {lang}, Framework: {framework}, Testable Files: {testable_count}, Non-Testable Files: {non_testable_count}, Parallel Levels: {topo_levels})!"
+        f"(Lang: {lang}, Framework: {framework}, Testable Files: {testable_count}, "
+        f"Non-Testable Files: {non_testable_count}, Parallel Levels: {topo_levels}, Container: {container_id[:12]})!"
     )
     return final_state
+
