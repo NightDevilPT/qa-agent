@@ -142,43 +142,32 @@ def build_topological_queue_node(state: QAState) -> Dict[str, Any]:
                 if node < dep:
                     safe_graph[node].remove(dep)
 
-    # 4. Perform level-by-level topological sort using graphlib.TopologicalSorter
-    topological_levels: List[List[str]] = []
+    # 4. Perform topological sort using graphlib.TopologicalSorter
+    topological_queue: List[str] = []
     try:
         ts = TopologicalSorter(safe_graph)
-        ts.prepare()
-
-        while ts.is_active():
-            ready = list(ts.get_ready())
-            if not ready:
-                break
-            topological_levels.append(sorted(ready))
-            for node in ready:
-                ts.done(node)
-
-        # Append any remaining unplaced files if indirect cycles exist
-        placed_set = {f for level in topological_levels for f in level}
-        unplaced = [f for f in testable_files if f not in placed_set]
-        if unplaced:
-            topological_levels.append(sorted(unplaced))
-
+        topological_queue = list(ts.static_order())
     except CycleError:
-        logger.warning("[Node 5: TopologicalSort] Indirect cycle detected. Placing remaining files into batch level.")
-        placed_set = {f for level in topological_levels for f in level}
-        remaining = [f for f in testable_files if f not in placed_set]
-        if remaining:
-            topological_levels.append(sorted(remaining))
+        logger.warning("[Node 5: TopologicalSort] Cycle detected. Using deterministic fallback sorting.")
+        topological_queue = sorted(testable_files)
     except Exception as e:
         logger.error(f"[Node 5: TopologicalSort] Error during graphlib sorting: {e}.")
-        topological_levels = [sorted(testable_files)]
+        topological_queue = sorted(testable_files)
+
+    # Ensure all testable files are present and normalized POSIX forward slashes
+    placed_set = set(topological_queue)
+    for file in testable_files:
+        if file not in placed_set:
+            topological_queue.append(file)
+
+    topological_queue = [f.replace("\\", "/") for f in topological_queue]
 
     logger.success(
-        f"[Node 5: TopologicalSort] Successfully built {len(topological_levels)} topological level batches "
-        f"for {len(testable_files)} testable files using graphlib."
+        f"[Node 5: TopologicalSort] Successfully built topological queue of {len(topological_queue)} files using graphlib."
     )
 
     update_payload: Dict[str, Any] = {
-        "topological_levels": topological_levels,
+        "topological_levels": topological_queue,
     }
 
     # Persist updated snapshot to state.json via CheckpointService
@@ -189,10 +178,11 @@ def build_topological_queue_node(state: QAState) -> Dict[str, Any]:
         title="Topological Dependency Queue Results",
         items={
             "Total Testable Files": len(testable_files),
-            "Parallel Level Batches": len(topological_levels),
-            "Level 0 (Leaf Files)": len(topological_levels[0]) if topological_levels else 0,
+            "Topological Queue Size": len(topological_queue),
+            "First File to Test": topological_queue[0] if topological_queue else "None",
             "LLM Tokens Consumed": 0,
         }
     )
 
     return update_payload
+

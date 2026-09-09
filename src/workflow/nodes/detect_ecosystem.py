@@ -47,14 +47,14 @@ class LanguageRulesSchema(BaseModel):
         default_factory=list,
         description=(
             "Non-code asset, config, styling, documentation, and build artifact extensions to exclude from testing "
-            "(e.g. .png, .css, .json, .md, .env, .d.ts, .map). DO NOT include source code extensions like .js, .ts, .py."
+            "(e.g. .png, .css, .json, .md, .env, .d.ts, .map, .md, etc). DO NOT include source code extensions like .js, .ts, .py."
         )
     )
     ignored_directories: List[str] = Field(
         default_factory=list,
         description=(
             "Directories to ignore/exclude from scanning and testing based on project language and framework "
-            "(e.g. node_modules, dist, build, .next, __pycache__, .venv, venv, target, vendor, coverage, .git, .vscode, .idea)"
+            "(e.g. node_modules, dist, build, .next, __pycache__, .venv, venv, target, vendor, coverage, .git, .vscode, .idea, etc)"
         )
     )
     import_export_patterns: List[str] = Field(

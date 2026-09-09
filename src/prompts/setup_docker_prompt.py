@@ -12,9 +12,11 @@ SYSTEM_DOCKER_PROMPT = (
     "1. Use official slim base images (e.g. node:20-slim, python:3.11-slim, golang:1.21-alpine, rust:1.75-slim).\n"
     "2. Set WORKDIR /app.\n"
     "3. Copy project files using 'COPY . .'. Do NOT copy specific individual file names unless specified.\n"
-    "4. If Install Command is provided, execute it with RUN (e.g. RUN npm install --ignore-scripts || true).\n"
-    "5. Do NOT set a CMD or ENTRYPOINT that terminates immediately."
+    "4. Execute Install Command with RUN (e.g. RUN npm install --ignore-scripts || true).\n"
+    "5. CRITICAL: Ensure the designated Test Runner (e.g. jest, vitest, ts-node, pytest) is installed globally or locally in the container (e.g. 'RUN npm install -g jest ts-node typescript' or 'RUN pip install pytest') so unit tests can execute even if the target repository package manifest omits test dependencies.\n"
+    "6. Do NOT set a CMD or ENTRYPOINT that terminates immediately."
 )
+
 
 
 

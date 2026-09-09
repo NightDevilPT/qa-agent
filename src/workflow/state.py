@@ -4,7 +4,7 @@ Defines typed dictionary structures for state persistence across
 LangGraph execution nodes.
 """
 
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Dict, List, Optional, TypedDict
 
 
 class NonTestableFile(TypedDict, total=False):
@@ -24,6 +24,22 @@ class TestResultFile(TypedDict, total=False):
     retries_used: int
     execution_time_ms: int
     tokens_used: int     # Tokens consumed generating and fixing tests for this specific file
+
+
+class LogicSignaturesDict(TypedDict, total=False):
+    """Schema for logic AST signatures detected by ecosystem profiler (Node 3)."""
+    control_flow_keywords: List[str]
+    async_and_event_signatures: List[str]
+    framework_handler_signatures: List[str]
+    database_query_signatures: List[str]
+    negative_non_testable_signatures: List[str]
+
+
+class LanguageRulesDict(TypedDict, total=False):
+    """Schema for language rules and import/export patterns detected by ecosystem profiler (Node 3)."""
+    non_testable_extensions: List[str]
+    ignored_directories: List[str]
+    import_export_patterns: List[str]
 
 
 class QAState(TypedDict, total=False):
@@ -47,21 +63,36 @@ class QAState(TypedDict, total=False):
     test_framework: str                      # "jest", "pytest", "testing"
     test_environment: str                    # "jsdom" vs "node" vs "python"
     install_command: str                     # "npm install", "pip install"
-    logic_signatures: Dict[str, Any]         # Control flow keywords & AST patterns
-    language_rules: Dict[str, Any]           # Extension filters and non-testable filenames
+    logic_signatures: LogicSignaturesDict    # Control flow keywords & AST patterns
+    language_rules: LanguageRulesDict        # Extension filters, ignored dirs & import regexes
 
     # State Lists & Queues (Node 4 & Node 5)
     testable_files: List[str]                # Confirmed files requiring test generation
     non_testable_files: List[NonTestableFile]# Skipped files + audit reasons
     existing_tests_map: Dict[str, str]       # Map of source_file -> existing_test_path
-    topological_levels: List[List[str]]      # Grouped parallel execution levels
+    topological_levels: List[str]            # Flat array of string file paths in topological order
     completed_files: List[TestResultFile]    # Passed test files
     failed_files: List[TestResultFile]       # Failed test files or application bugs
 
     # Execution Worker & Guardrails
-    current_file_batch: List[str]            # Active parallel file batch for current level
-    current_retries: int                     # Retries spent on current file batch
+    current_file: Optional[str]              # Active single file currently being processed
+    current_file_batch: Optional[List[str]]  # Optional legacy batch compatibility
+    should_skip_test: bool                   # Node 8 skip flag if existing test preserved
+    user_confirmed: bool                     # User interactive confirmation flag
+    generated_test_code: Optional[str]       # Node 9 generated test code string
+    test_file_path: Optional[str]            # Saved test file relative path
+    current_retries: int                     # Retries spent on current active file
     total_tokens_used: int                   # Cumulative tokens consumed across run
-    node_tokens: Dict[str, int]              # Tracks tokens used per LangGraph node (e.g., {"detect_ecosystem_node": 75})
+    node_tokens: Dict[str, int]              # Tracks tokens used per LangGraph node
     max_token_budget: int                    # Maximum token budget cap (default 50,000)
     per_test_timeout_sec: int                # Docker test execution timeout (default 30s)
+    last_exit_code: Optional[int]            # Last test execution exit code (0 = PASS)
+    raw_logs: Optional[str]                  # Raw stdout/stderr test execution log
+    summary_report: Optional[str]            # Final Markdown execution summary report
+
+
+
+
+
+
+
